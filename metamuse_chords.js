@@ -10,7 +10,7 @@
 //   inlet 1  : context dictionary from live.miditool.in (middle outlet)
 //   outlet 0 : "dictionary <name>" -> live.miditool.out
 //   outlet 1 : bang -> live.miditool.in (regenerate when a control changes)
-//   outlet 2 : UI feedback -> [route readout slot preset]
+//   outlet 2 : UI feedback -> [route readout slot slotlen preset]
 //
 // Written in ES5 so it runs in Max's classic [js] object.
 
@@ -65,6 +65,14 @@ var CHORD_TYPES = [
 // Order must match the Length menu in build_device.py (values in beats)
 var LENGTHS = [0.5, 1, 2, 3, 4, 6, 8, 16];
 
+// Per-slot length menu, in beats (4 beats = 1 bar). 0 = use the Length menu.
+// Order must match SLOT_LENGTHS in build_device.py.
+var SLOT_LENGTHS = [0, 0.5, 1, 2, 3, 4, 6, 8, 12, 16];
+
+// Play styles and their step rate. Order must match build_device.py.
+var STYLES = ["Block", "Strum Up", "Strum Down", "Arp Up", "Arp Down", "Arp Up-Down", "Arp Random"];
+var RATES = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 1 / 6, 1 / 3];  // 1/64 ... 1/4, 1/16T, 1/8T
+
 // Order must match the Presets menu. Degrees are 1-based; 0 = empty slot.
 var PRESETS = [
     null, // "Presets…" placeholder
@@ -77,11 +85,13 @@ var PRESETS = [
     [1, 6, 3, 7],
     [1, 4, 5],
     [1, 7, 6, 5],
-    [1, 5, 6, 3, 4, 1, 4, 5]
+    [1, 5, 6, 3, 4, 1, 4, 5],
+    [1, 1, 1, 1, 4, 4, 1, 1, 5, 4, 1, 5],                 // 12-bar blues
+    [1, 5, 6, 4, 1, 5, 6, 4, 6, 4, 1, 5, 6, 4, 5, 5]      // 16-chord pop song
 ];
 
 var ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
-var NUM_SLOTS = 8;
+var NUM_SLOTS = 16;
 
 // ─── STATE (set by the UI controls) ──────────────────────────────────────────
 
@@ -96,7 +106,11 @@ var state = {
     fill: 1,          // repeat progression to fill the time selection
     bass: 0,          // add root an octave below
     velocity: 100,
-    slots: [1, 5, 6, 4, 0, 0, 0, 0]
+    style: 0,         // index into STYLES
+    rate: 2,          // index into RATES
+    voiceLead: 0,     // 1 = pick inversions so chords move smoothly
+    slots:    [1, 5, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    slotLens: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 };
 
 var context = null;   // last context dictionary from live.miditool.in
@@ -194,13 +208,10 @@ function buildChord(st, ctx, degree) {
     var rootPc = (sc.root + sc.intervals[degIdx]) % 12;
     var rootMidi = (st.octave + 2) * 12 + sc.root + sc.intervals[degIdx];
 
-    var pitches = shape.map(function (s) { return rootMidi + s; });
-    for (var i = 0; i < st.inversion % pitches.length; i++) {
-        pitches.push(pitches.shift() + 12);
+    var upper = shape.map(function (s) { return rootMidi + s; });
+    for (var i = 0; i < st.inversion % upper.length; i++) {
+        upper.push(upper.shift() + 12);
     }
-    if (st.bass) pitches.unshift(rootMidi - 12);
-
-    pitches = pitches.filter(function (p) { return p >= 0 && p <= 127; });
 
     var suffix = def.suffix !== undefined ? def.suffix : qualityName(shape);
     var name = suffix !== null ? NOTES[rootPc] + suffix :
@@ -209,8 +220,57 @@ function buildChord(st, ctx, degree) {
     return {
         name: name,
         roman: romanFor(degIdx, shape),
-        pitches: pitches
+        upper: upper,                        // the chord voicing
+        bass: st.bass ? rootMidi - 12 : null // optional root below it
     };
+}
+
+// All notes of a chord, low to high, kept inside the MIDI range.
+function chordPitches(chord) {
+    var all = chord.upper.slice();
+    if (chord.bass !== null) all.push(chord.bass);
+    return all.filter(function (p) { return p >= 0 && p <= 127; })
+              .sort(function (a, b) { return a - b; });
+}
+
+// ─── VOICE LEADING ───────────────────────────────────────────────────────────
+// For each chord after the first, try every inversion in nearby octaves and
+// keep the one whose notes move the least from the previous chord. A small
+// pull towards the first chord's register stops the progression drifting.
+
+function mean(a) {
+    var sum = 0;
+    for (var i = 0; i < a.length; i++) sum += a[i];
+    return sum / a.length;
+}
+
+function movement(prev, cand) {
+    if (prev.length !== cand.length) return Math.abs(mean(prev) - mean(cand)) * cand.length;
+    var cost = 0;
+    for (var i = 0; i < cand.length; i++) cost += Math.abs(prev[i] - cand[i]);
+    return cost;
+}
+
+function voiceLead(chords) {
+    if (chords.length < 2) return;
+    var anchor = mean(chords[0].upper);
+    var prev = chords[0].upper.slice().sort(function (a, b) { return a - b; });
+    for (var c = 1; c < chords.length; c++) {
+        var base = chords[c].upper.slice().sort(function (a, b) { return a - b; });
+        var best = null, bestCost = Infinity;
+        for (var k = 0; k < base.length; k++) {
+            var inv = base.slice();
+            for (var r = 0; r < k; r++) inv.push(inv.shift() + 12);
+            for (var shift = -24; shift <= 12; shift += 12) {
+                var cand = inv.map(function (p) { return p + shift; });
+                if (cand[0] < 0 || cand[cand.length - 1] > 127) continue;
+                var cost = movement(prev, cand) + 0.5 * Math.abs(mean(cand) - anchor);
+                if (cost < bestCost) { bestCost = cost; best = cand; }
+            }
+        }
+        if (best) chords[c].upper = best;
+        prev = chords[c].upper;
+    }
 }
 
 // Time range to write into: Live's time selection if we can find it.
@@ -223,15 +283,74 @@ function selectionRange(ctx) {
     return null;
 }
 
-// The list of chords from the slots, skipping empty ones.
+// The list of chords from the slots, skipping empty ones. Each chord gets
+// its length in beats: the slot's own length, or the Length menu's.
 function progression(st, ctx) {
     var chords = [];
     for (var i = 0; i < st.slots.length; i++) {
         if (!st.slots[i]) continue;
         var c = buildChord(st, ctx, st.slots[i]);
-        if (c) chords.push(c);
+        if (!c) continue;
+        c.beats = SLOT_LENGTHS[st.slotLens[i]] || LENGTHS[st.length];
+        chords.push(c);
     }
+    if (st.voiceLead) voiceLead(chords);
     return chords;
+}
+
+// Small repeatable random generator, so "Arp Random" gives the same
+// pattern each time you press Generate with the same settings.
+function seededRandom(seed) {
+    var x = seed * 9301 + 49297;
+    return function () {
+        x = (x * 9301 + 49297) % 233280;
+        return x / 233280;
+    };
+}
+
+// Order of notes for an arpeggio over pitches (low to high).
+function arpOrder(pitches, style, count, rand) {
+    var up = pitches, down = pitches.slice().reverse();
+    var cycle;
+    if (style === "Arp Up") cycle = up;
+    else if (style === "Arp Down") cycle = down;
+    else if (style === "Arp Up-Down") cycle = up.concat(down.slice(1, -1));
+    var out = [];
+    for (var i = 0; i < count; i++) {
+        out.push(cycle ? cycle[i % cycle.length] :
+            pitches[Math.floor(rand() * pitches.length)]);
+    }
+    return out;
+}
+
+// Notes for one chord placed at time t for dur beats.
+function chordNotes(st, chord, t, dur, index) {
+    var pitches = chordPitches(chord);
+    var style = STYLES[st.style];
+    var rate = RATES[st.rate];
+    var notes = [];
+    function add(pitch, start, length) {
+        notes.push({ pitch: pitch, start_time: start, duration: length,
+                     velocity: st.velocity, mute: 0 });
+    }
+
+    if (style === "Block") {
+        pitches.forEach(function (p) { add(p, t, dur); });
+    } else if (style === "Strum Up" || style === "Strum Down") {
+        var order = style === "Strum Up" ? pitches : pitches.slice().reverse();
+        order.forEach(function (p, k) {
+            var offset = Math.min(k * rate, dur * 0.5);  // never strum past half the chord
+            add(p, t + offset, dur - offset);
+        });
+    } else {
+        var steps = Math.max(1, Math.ceil(dur / rate - 1e-6));
+        var seq = arpOrder(pitches, style, steps, seededRandom(index + 1));
+        for (var s = 0; s < steps; s++) {
+            var start = t + s * rate;
+            add(seq[s], start, Math.min(rate, t + dur - start));
+        }
+    }
+    return notes;
 }
 
 // Note list in the format live.miditool.out expects.
@@ -240,26 +359,20 @@ function generateNotes(st, ctx) {
     var notes = [];
     if (!chords.length) return notes;
 
-    var beats = LENGTHS[st.length];
+    var total = 0;
+    chords.forEach(function (c) { total += c.beats; });
+
     var range = selectionRange(ctx);
     var start = range ? range.start : 0;
-    var end = (range && st.fill) ? range.end : start + beats * chords.length;
+    var end = (range && st.fill) ? range.end : start + total;
     if (range && !st.fill) end = Math.min(end, range.end);
 
     var t = start, i = 0;
     while (t < end - 1e-6) {
-        var dur = Math.min(beats, end - t);
         var chord = chords[i % chords.length];
-        for (var p = 0; p < chord.pitches.length; p++) {
-            notes.push({
-                pitch: chord.pitches[p],
-                start_time: t,
-                duration: dur,
-                velocity: st.velocity,
-                mute: 0
-            });
-        }
-        t += beats;
+        var dur = Math.min(chord.beats, end - t);
+        notes = notes.concat(chordNotes(st, chord, t, dur, i));
+        t += chord.beats;
         i++;
     }
     return notes;
@@ -278,7 +391,7 @@ function readoutText(st, ctx) {
 // ─── MAX GLUE ────────────────────────────────────────────────────────────────
 
 // Re-run the apply cycle so the clip updates as controls move. Debounced so a
-// preset (8 slot changes at once) only rewrites the clip one time.
+// preset (32 slot changes at once) only rewrites the clip one time.
 var regenerate = (typeof Task !== "undefined") ?
     new Task(function () { outlet(1, "bang"); }) : null;
 
@@ -300,6 +413,9 @@ function length(v)    { state.length = v | 0; changed(); }
 function fill(v)      { state.fill = v ? 1 : 0; changed(); }
 function bass(v)      { state.bass = v ? 1 : 0; changed(); }
 function velocity(v)  { state.velocity = Math.max(1, Math.min(127, v | 0)); changed(); }
+function style(v)     { state.style = v | 0; changed(); }
+function rate(v)      { state.rate = v | 0; changed(); }
+function voicelead(v) { state.voiceLead = v ? 1 : 0; changed(); }
 
 function slot(i, v) {
     if (i < 0 || i >= NUM_SLOTS) return;
@@ -307,11 +423,21 @@ function slot(i, v) {
     changed();
 }
 
-// Picking a preset sets the slot menus; each menu then reports back via slot().
+function slotlen(i, v) {
+    if (i < 0 || i >= NUM_SLOTS) return;
+    state.slotLens[i] = v | 0;
+    changed();
+}
+
+// Picking a preset sets the slot menus (and resets their lengths to "=");
+// each menu then reports back via slot() / slotlen().
 function preset(v) {
     var p = PRESETS[v | 0];
     if (!p) return;
-    for (var i = 0; i < NUM_SLOTS; i++) outlet(2, "slot", i, p[i] || 0);
+    for (var i = 0; i < NUM_SLOTS; i++) {
+        outlet(2, "slot", i, p[i] || 0);
+        outlet(2, "slotlen", i, 0);
+    }
     outlet(2, "preset", "set", 0);
 }
 
@@ -344,6 +470,7 @@ function dictionary(name) {
 if (typeof module !== "undefined") {
     module.exports = {
         state: state, SCALES: SCALES, CHORD_TYPES: CHORD_TYPES, LENGTHS: LENGTHS, PRESETS: PRESETS,
+        STYLES: STYLES, progression: progression,
         buildChord: buildChord, generateNotes: generateNotes, readoutText: readoutText
     };
 }
