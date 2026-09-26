@@ -41,11 +41,14 @@ var SCALES = [
 
 // Order must match the Type menu in build_device.py.
 // "steps" = stack every other scale note (diatonic, follows the mode).
+//           These are the main chord sizes: 3, 4, 5, 6 and 7 notes.
 // "semis" = fixed shape built on each scale degree (same as the web app).
 var CHORD_TYPES = [
     { label: "Triad",    steps: [0, 2, 4] },
     { label: "7th",      steps: [0, 2, 4, 6] },
     { label: "9th",      steps: [0, 2, 4, 6, 8] },
+    { label: "11th",     steps: [0, 2, 4, 6, 8, 10] },
+    { label: "13th",     steps: [0, 2, 4, 6, 8, 10, 12] },
     { label: "5th",      semis: [0, 7],             suffix: "5" },
     { label: "add9",     semis: [0, 4, 7, 14],      suffix: "add9" },
     { label: "sus2",     semis: [0, 2, 7],          suffix: "sus2" },
@@ -128,19 +131,44 @@ function chordShape(intervals, degIdx, type) {
     return out;
 }
 
-// Name a diatonic shape from its intervals, e.g. [0,3,7,10] -> "m7".
+// Name a diatonic shape from its intervals, e.g. [0,3,7,10] -> "m7",
+// [0,4,7,10,14,17,21] -> "13", [0,4,7,11,14,18] -> "maj9(#11)".
 // Returns null for stacks with no common name (e.g. pentatonic stacks).
+var TRIAD_NAMES = { "4,7": "", "3,7": "m", "3,6": "dim", "4,8": "aug", "2,7": "sus2", "5,7": "sus4" };
+
+// Triad + 7th -> name pattern; {n} becomes 7, 9, 11 or 13.
+var SEVENTH_NAMES = {
+    "4,7,11": "maj{n}", "4,7,10": "{n}", "3,7,10": "m{n}", "3,6,10": "m{n}b5",
+    "3,6,9": "dim{n}", "3,7,11": "m(maj{n})", "4,8,11": "maj{n}#5", "4,8,10": "{n}#5"
+};
+
+// Upper extensions: which pitch class is "natural", and names for altered ones.
+var EXTENSIONS = [
+    { n: 9,  natural: 2, altered: { 1: "b9", 3: "#9" } },
+    { n: 11, natural: 5, altered: { 6: "#11", 4: "b11" } },
+    { n: 13, natural: 9, altered: { 8: "b13", 10: "#13" } }
+];
+
 function qualityName(shape) {
-    var key = shape.map(function (s) { return s % 12; }).slice(1).join(",");
-    var names = {
-        "4,7": "", "3,7": "m", "3,6": "dim", "4,8": "aug", "2,7": "sus2", "5,7": "sus4",
-        "4,7,11": "maj7", "4,7,10": "7", "3,7,10": "m7", "3,6,10": "m7b5",
-        "3,6,9": "dim7", "3,7,11": "m(maj7)", "4,8,11": "maj7#5", "4,8,10": "7#5",
-        "4,7,11,2": "maj9", "4,7,10,2": "9", "3,7,10,2": "m9", "3,6,10,2": "m9b5",
-        "3,7,11,2": "m(maj9)", "4,7,10,1": "7b9", "3,6,10,1": "m7b5b9",
-        "3,7,10,1": "m7b9", "4,8,11,2": "maj9#5"
-    };
-    return names.hasOwnProperty(key) ? names[key] : null;
+    var pcs = shape.map(function (s) { return s % 12; });
+    if (pcs.length === 3) {
+        var t = pcs.slice(1).join(",");
+        return TRIAD_NAMES.hasOwnProperty(t) ? TRIAD_NAMES[t] : null;
+    }
+    var base = pcs.slice(1, 4).join(",");
+    if (!SEVENTH_NAMES.hasOwnProperty(base)) return null;
+
+    // The highest natural extension names the chord (C9, C11, C13) as long as
+    // everything below it is natural too; altered ones go in brackets.
+    var n = 7, alts = [];
+    for (var i = 4; i < pcs.length; i++) {
+        var ext = EXTENSIONS[i - 4];
+        if (pcs[i] === ext.natural && !alts.length) n = ext.n;
+        else if (pcs[i] === ext.natural) alts.push(String(ext.n));
+        else if (ext.altered.hasOwnProperty(pcs[i])) alts.push(ext.altered[pcs[i]]);
+        else return null;
+    }
+    return SEVENTH_NAMES[base].replace("{n}", n) + (alts.length ? "(" + alts.join(",") + ")" : "");
 }
 
 // Roman numeral, lowercase for minor/diminished chords.

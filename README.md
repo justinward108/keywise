@@ -22,7 +22,7 @@ open the device in Max (edit button) and click Freeze.
 
 1. Open a MIDI clip and go to the **Generate** tab in the clip view.
 2. Choose **MetaMuse Chords** from the generator menu.
-3. Pick Key, Scale/Mode, Chord type and the scale degrees in the 8 slots (or a preset).
+3. Pick Key, Scale/Mode, Chord type (Triad = 3 notes up to 13th = 7 notes) and the scale degrees in the 8 slots (or a preset).
 4. Press **Generate**. Changing a control afterwards updates the clip live.
 
 Chords fill the clip's time selection (or loop). Turn off **Fill Selection** to write

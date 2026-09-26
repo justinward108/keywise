@@ -24,7 +24,7 @@ NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 SCALES = ["Major", "Natural Minor", "Harmonic Minor", "Melodic Minor", "Dorian",
           "Phrygian", "Lydian", "Mixolydian", "Locrian", "Pentatonic Major",
           "Pentatonic Minor", "Blues", "Whole Tone", "Diminished (W-H)"]
-CHORD_TYPES = ["Triad", "7th", "9th", "5th", "add9", "sus2", "sus4", "maj9", "min9",
+CHORD_TYPES = ["Triad (3)", "7th (4)", "9th (5)", "11th (6)", "13th (7)", "5th", "add9", "sus2", "sus4", "maj9", "min9",
                "9 (dom)", "add11", "m/maj7", "dim7", "aug"]
 LENGTHS = ["1/2 beat", "1 beat", "2 beats", "3 beats", "1 bar", "6 beats", "2 bars", "4 bars"]
 DEGREES = ["-", "I", "II", "III", "IV", "V", "VI", "VII"]
@@ -156,7 +156,7 @@ def build():
     toggle("Clip Scale", "Use Clip Scale", 0, [178, 14, 94, 16], "clipscale",
            "Ignore Key and Scale and use the clip's Scale Mode setting instead.")
     menu("Chord Type", "Type", CHORD_TYPES, 0, [278, 14, 96, 16], "type",
-         "Triad / 7th / 9th stack notes from the scale. The others use a fixed shape on each degree.")
+         "Triad (3 notes) to 13th (7 notes) stack notes from the scale, so they follow the mode. The others use a fixed shape on each degree.")
 
     # ── Row 2: voicing and timing ──────────────────────────────────────────
     label("Octave", 6, 34, 40)
