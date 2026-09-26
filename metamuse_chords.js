@@ -270,10 +270,9 @@ function readoutText(st, ctx) {
     var chords = progression(st, ctx);
     if (st.useClipScale && !(ctx && ctx.scale)) return "Using the clip's scale: press Generate";
     var head = NOTES[sc.root % 12] + " " + sc.name;
-    if (!chords.length) return head + ": no chords (pick degrees above)";
-    return head + ":  " + chords.map(function (c) {
-        return c.roman + " " + c.name;
-    }).join("  ·  ");
+    if (!chords.length) return head + ": pick chords above";
+    // Kept short: the Generate panel is narrow.
+    return head + ":  " + chords.map(function (c) { return c.name; }).join("  ");
 }
 
 // ─── MAX GLUE ────────────────────────────────────────────────────────────────

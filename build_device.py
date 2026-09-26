@@ -17,7 +17,7 @@ from pathlib import Path
 
 OUT_NAME = "MetaMuse Chords.amxd"
 JS_FILE = "metamuse_chords.js"
-DEVICE_WIDTH = 380  # MIDI Tools panel height limit is ~146 px
+DEVICE_WIDTH = 152  # the MIDI Tools Generate panel is ~152 x 146 px
 
 # Menu contents. Order must match the arrays in metamuse_chords.js.
 NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -106,10 +106,6 @@ def build():
     p.connect(this_device, loaded, 0, 0)
     p.connect(loaded, js, 0, 0)
 
-    def label(text, x, y, w):
-        p.add("live.comment", [900, 20 + len(p.boxes) * 4, w, 14.0], [x, y, w, 14.0],
-              text=text, fontsize=9.0, numinlets=1, numoutlets=0, textjustification=0)
-
     control_x = 200  # patching-view column for controls
 
     def wire(ctrl, message, y):
@@ -126,12 +122,15 @@ def build():
         wire(m, message, y)
         return m
 
-    def numbox(name, short, lo, hi, initial, rect, message, annotation):
+    def numbox(name, short, lo, hi, initial, rect, message, annotation, units):
         y = 60 + len(p.boxes) * 6
+        attrs = param(name, short, 1, initial, mmin=lo, mmax=hi)
+        attrs["valueof"]["parameter_unitstyle"] = 9  # custom text, e.g. "Oct 3"
+        attrs["valueof"]["parameter_units"] = units
         n = p.add("live.numbox", [control_x, y, rect[2], 15.0], rect,
                   varname=name, parameter_enable=1, numinlets=1, numoutlets=2,
                   outlettype=["", "float"], annotation=annotation, annotation_name=name,
-                  saved_attribute_attributes=param(name, short, 1, initial, mmin=lo, mmax=hi))
+                  saved_attribute_attributes=attrs)
         wire(n, message, y)
         return n
 
@@ -145,51 +144,53 @@ def build():
         wire(t, message, y)
         return t
 
-    # ── Row 1: key, scale, chord type ──────────────────────────────────────
-    label("Key", 6, 1, 40)
-    label("Scale / Mode", 50, 1, 110)
-    label("Chord", 278, 1, 90)
-    menu("Root", "Root", NOTES, 0, [6, 14, 40, 16], "root",
+    # The Generate panel is only ~152 x 146 px, so controls are packed in
+    # rows with no separate labels: menus show their value, numboxes carry
+    # their own label ("Oct 3"), and toggles are labelled buttons.
+    # Hover any control to see its description in Live's Info View.
+
+    # ── Row 1: key + scale ────────────────────────────────────────────────
+    menu("Root", "Root", NOTES, 0, [0, 0, 32, 16], "root",
          "Key root note.")
-    menu("Scale", "Scale", SCALES, 0, [50, 14, 124, 16], "scale",
+    menu("Scale", "Scale", SCALES, 0, [34, 0, 118, 16], "scale",
          "Scale or mode the chords are built from.")
-    toggle("Clip Scale", "Use Clip Scale", 0, [178, 14, 94, 16], "clipscale",
-           "Ignore Key and Scale and use the clip's Scale Mode setting instead.")
-    menu("Chord Type", "Type", CHORD_TYPES, 0, [278, 14, 96, 16], "type",
+
+    # ── Row 2: chord type + length ────────────────────────────────────────
+    menu("Chord Type", "Type", CHORD_TYPES, 0, [0, 19, 76, 16], "type",
          "Triad (3 notes) to 13th (7 notes) stack notes from the scale, so they follow the mode. The others use a fixed shape on each degree.")
-
-    # ── Row 2: voicing and timing ──────────────────────────────────────────
-    label("Octave", 6, 34, 40)
-    label("Inversion", 50, 34, 50)
-    label("Length", 104, 34, 70)
-    label("Velocity", 324, 34, 50)
-    numbox("Octave", "Oct", 0, 6, 3, [6, 47, 40, 16], "octave",
-           "Octave of the chord roots (Live naming: C3 = middle C).")
-    numbox("Inversion", "Inv", 0, 3, 0, [50, 47, 50, 16], "inversion",
-           "Moves the lowest notes up an octave.")
-    menu("Length", "Len", LENGTHS, 4, [104, 47, 70, 16], "length",
+    menu("Length", "Len", LENGTHS, 4, [78, 19, 74, 16], "length",
          "How long each chord lasts.")
-    toggle("Fill", "Fill Selection", 1, [178, 47, 70, 16], "fill",
-           "On: repeat the progression until the end of the time selection / loop.")
-    toggle("Bass", "+ Bass", 0, [252, 47, 68, 16], "bass",
-           "Adds the chord root an octave below.")
-    numbox("Velocity", "Vel", 1, 127, 100, [324, 47, 50, 16], "velocity",
-           "Note velocity.")
 
-    # ── Row 3: progression slots + presets ─────────────────────────────────
-    label("Progression (scale degrees)", 6, 67, 200)
-    for i in range(8):
-        slot = menu(f"Slot {i + 1}", f"Slot{i + 1}", DEGREES, DEFAULT_SLOTS[i],
-                    [6 + i * 38, 80, 36, 16], f"slot {i}",
-                    f"Chord {i + 1} of the progression, as a scale degree. '-' skips it.")
-        p.connect(slot_router, slot, i, 0)
-    preset = menu("Preset", "Preset", PRESETS, 0, [314, 80, 60, 16], "preset",
-                  "Load a common progression into the slots.")
+    # ── Row 3: voicing ────────────────────────────────────────────────────
+    numbox("Octave", "Oct", 0, 6, 3, [0, 38, 48, 16], "octave",
+           "Octave of the chord roots (Live naming: C3 = middle C).", "Oct %d")
+    numbox("Inversion", "Inv", 0, 3, 0, [50, 38, 48, 16], "inversion",
+           "Moves the lowest notes up an octave.", "Inv %d")
+    toggle("Bass", "+ Bass", 0, [100, 38, 52, 16], "bass",
+           "Adds the chord root an octave below.")
+
+    # ── Row 4: options + presets ──────────────────────────────────────────
+    toggle("Clip Scale", "Clip Key", 0, [0, 57, 48, 16], "clipscale",
+           "Ignore Key and Scale and use the clip's Scale setting instead.")
+    toggle("Fill", "Fill", 1, [50, 57, 48, 16], "fill",
+           "On: repeat the progression until the end of the time selection / loop. Off: write it once.")
+    preset = menu("Preset", "Preset", PRESETS, 0, [100, 57, 52, 16], "preset",
+                  "Load a common progression into the chord slots.")
     p.connect(feedback, preset, 2, 0)
 
-    # ── Readout ────────────────────────────────────────────────────────────
-    readout = p.add("live.comment", [control_x, 520, 368, 40.0], [6, 102, 368, 40.0],
-                    text="MetaMuse Chords", fontsize=10.0, linecount=3,
+    # ── Rows 5-6: the 8 chord slots (scale degrees) ───────────────────────
+    for i in range(8):
+        x = (i % 4) * 38
+        y = 78 + (i // 4) * 19
+        slot = menu(f"Slot {i + 1}", f"Slot{i + 1}", DEGREES, DEFAULT_SLOTS[i],
+                    [x, y, 36, 16], f"slot {i}",
+                    f"Chord {i + 1} of the progression, as a scale degree. '-' skips it.")
+        p.connect(slot_router, slot, i, 0)
+
+    # ── Readout ───────────────────────────────────────────────────────────
+    readout = p.add("live.comment", [control_x, 520, DEVICE_WIDTH, 30.0],
+                    [0, 116, DEVICE_WIDTH, 30.0],
+                    text="MetaMuse Chords", fontsize=9.0, linecount=3,
                     numinlets=1, numoutlets=0, textjustification=0)
     p.connect(feedback, readout, 0, 0)
 
