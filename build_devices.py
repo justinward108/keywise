@@ -59,7 +59,8 @@ def midi_tool_core(p, js_text):
 
 LENGTHS = ["1/2 beat", "1 beat", "2 beats", "3 beats", "1 bar", "6 beats", "2 bars", "4 bars"]
 DEGREES = ["-", "I", "II", "III", "IV", "V", "VI", "VII"]
-SLOT_LENGTHS = ["=", "1/8", "1/4", "1/2", "3/4", "1", "1.5", "2", "3", "4"]  # bars; "=" = Length menu
+SLOT_LENGTHS = ["Len=", "1/8", "1/4", "1/2", "3/4", "1", "1.5", "2", "3", "4"]  # bars; "Len=" = Length menu
+SLOT_INVERSIONS = ["Inv=", "Root", "1st", "2nd", "3rd"]  # "Inv=" = Inversion / Voice Leading
 STYLES = ["Block", "Strum Up", "Strum Down", "Arp Up", "Arp Down", "Arp Up-Down", "Arp Random"]
 RATES = ["1/64", "1/32", "1/16", "1/8", "1/4", "1/16T", "1/8T"]
 PRESETS = ["Presets…", "I V vi IV", "I vi IV V", "vi IV I V", "ii V I", "vi ii V I",
@@ -72,14 +73,17 @@ DEFAULT_SLOTS = [1, 5, 6, 4] + [0] * 12
 def build_chords():
     p = Patch()
     js = midi_tool_core(p, "js metamuse_chords.js")
-    feedback = p.obj("route readout slot slotlen preset", 200, 420, inlets=1, outlets=5, width=200)
+    feedback = p.obj("route readout slot slotlen slotinv preset", 200, 420, inlets=1, outlets=6, width=240)
     slot_router = p.obj("route " + " ".join(map(str, range(NUM_SLOTS))), 200, 450,
                         inlets=1, outlets=NUM_SLOTS + 1, width=300)
     len_router = p.obj("route " + " ".join(map(str, range(NUM_SLOTS))), 200, 480,
                        inlets=1, outlets=NUM_SLOTS + 1, width=300)
     p.connect(js, feedback, 2, 0)
     p.connect(feedback, slot_router, 1, 0)
+    inv_router = p.obj("route " + " ".join(map(str, range(NUM_SLOTS))), 200, 510,
+                       inlets=1, outlets=NUM_SLOTS + 1, width=300)
     p.connect(feedback, len_router, 2, 0)
+    p.connect(feedback, inv_router, 3, 0)
 
     ui = DeviceUI(p, js)
 
@@ -91,11 +95,11 @@ def build_chords():
     ui.menu("Chord Type", "Type", CHORD_TYPES, 0, [0, 37, 76, 16], "type",
             "Triad (3 notes) to 13th (7 notes) stack notes from the scale, so they follow the mode. The others use a fixed shape on each degree.")
     ui.menu("Length", "Len", LENGTHS, 4, [78, 37, 74, 16], "length",
-            "Default length of each chord. Slots set to '=' use this; give a slot its own length on the 1-8 / 9-16 pages.")
+            "Default length of each chord. Slots set to 'Len=' use this; give a slot its own length on the 1-8 / 9-16 pages.")
     ui.numbox("Octave", "Oct", 0, 6, 3, [0, 56, 48, 16], "octave",
               "Octave of the chord roots (Live naming: C3 = middle C).", "Oct %d")
     ui.numbox("Inversion", "Inv", 0, 3, 0, [50, 56, 48, 16], "inversion",
-              "Moves the lowest notes up an octave. With Voice Leading on, this sets the first chord only.", "Inv %d")
+              "Moves the lowest notes up an octave, for every chord set to 'Inv='. With Voice Leading on, this sets the first chord only.", "Inv %d")
     ui.toggle("Bass", "+ Bass", 0, [100, 56, 52, 16], "bass", "Adds the chord root an octave below.")
     ui.toggle("Clip Scale", "Clip Key", 0, [0, 75, 48, 16], "clipscale",
               "Ignore Key and Scale and use the clip's Scale setting instead.")
@@ -103,23 +107,28 @@ def build_chords():
               "On: repeat the progression until the end of the time selection / loop. Off: write it once.")
     preset = ui.menu("Preset", "Preset", PRESETS, 0, [100, 75, 52, 16], "preset",
                      "Load a common progression into the chord slots (up to 16 chords).")
-    p.connect(feedback, preset, 3, 0)
+    p.connect(feedback, preset, 4, 0)
 
+    # Each chord slot is a column of three menus: chord, length, inversion.
+    # Two groups of four columns fill the page (15 px menus, 1 px apart).
     for page, first in (("1-8", 0), ("9-16", 8)):
         ui.page(page)
         for k in range(8):
             i = first + k
-            x, y = (k % 4) * 38, 18 + (k // 4) * 40
+            x, y = (k % 4) * 38, 18 + (k // 4) * 50
             slot = ui.menu(f"Slot {i + 1}", f"Slot{i + 1}", DEGREES, DEFAULT_SLOTS[i],
-                           [x, y, 36, 16], f"slot {i}",
+                           [x, y, 36, 15], f"slot {i}",
                            f"Chord {i + 1} of the progression, as a scale degree. '-' skips it.")
             p.connect(slot_router, slot, i, 0)
             length = ui.menu(f"Len {i + 1}", f"Len{i + 1}", SLOT_LENGTHS, 0,
-                             [x, y + 19, 36, 16], f"slotlen {i}",
-                             f"Length of chord {i + 1} in bars. '=' uses the Length menu on the Key page.")
+                             [x, y + 16, 36, 15], f"slotlen {i}",
+                             f"Length of chord {i + 1} in bars. 'Len=' uses the Length menu on the Key page.")
             p.connect(len_router, length, i, 0)
-        ui.label("Top: chord · below: length in bars", [0, 98, 152, 14],
-                 name=f"Caption_{ui.var(page).replace('-', '_')}")
+            inv = ui.menu(f"Inv {i + 1}", f"Inv{i + 1}", SLOT_INVERSIONS, 0,
+                          [x, y + 32, 36, 15], f"slotinv {i}",
+                          f"Inversion of chord {i + 1}. 'Inv=' follows the Inversion control (and Voice Leading); "
+                          "Root/1st/2nd/3rd fix it for this chord. 3rd needs a 7th chord or bigger.")
+            p.connect(inv_router, inv, i, 0)
 
     ui.page("Feel")
     ui.menu("Style", "Style", STYLES, 0, [0, 18, 76, 16], "style",

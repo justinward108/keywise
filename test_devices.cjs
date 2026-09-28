@@ -54,6 +54,18 @@ const names = (notes) => {
     c.state.type = 0; c.state.voiceLead = 0;
     c.state.slotLens[0] = 7; // 2 bars
     eq(names(c.generateNotes(c.state, ctx)).map((s) => s.split(":")[0]), ["0", "8", "12"]);
+    // Per-chord inversions: G in 1st inversion (B D G), Am in 2nd (E A C).
+    c.state.slotLens[0] = 0;
+    c.state.slotInvs[1] = 2; c.state.slotInvs[2] = 3;
+    eq(c.progression(c.state, null).map((x) => x.upper.join(",")),
+        ["60,64,67", "71,74,79", "76,81,84", "65,69,72"]);
+    // With Voice Leading on, hand-picked inversions stay; the others still move smoothly.
+    c.state.voiceLead = 1;
+    const vl = c.progression(c.state, null);
+    eq(vl[1].upper, [71, 74, 79]);
+    eq(vl[2].upper, [76, 81, 84]);
+    eq(vl[3].upper, [77, 81, 84]);   // F moves the least from E A C: F A C
+    c.state.voiceLead = 0; c.state.slotInvs = c.state.slotInvs.map(() => 0);
     console.log("chords ok  ", c.readoutText(c.state, null));
 }
 
