@@ -73,6 +73,20 @@ const names = (notes) => {
     c.state.voiceLead = 1;   // mixed sizes still voice-lead without errors
     assert(c.progression(c.state, null).every((x) => x.upper.every((p) => p > 40 && p < 100)));
     c.state.voiceLead = 0; c.state.slotTypes = c.state.slotTypes.map(() => 0);
+    // Duplicate: 4 chords -> 8 -> 16, keeping per-chord settings.
+    c.state.slotTypes[1] = 2; c.state.slotLens[2] = 3;
+    const dup = c.duplicateSlots(c.state);
+    eq(dup.map((d) => d[0]), [4, 5, 6, 7]);
+    eq(dup[1], [5, 5, 2, 0, 0]);   // slot 6 = copy of slot 2: V, 7th
+    eq(dup[2], [6, 6, 0, 3, 0]);   // slot 7 = copy of slot 3: vi, 1/2 bar
+    dup.forEach((d) => { c.state.slots[d[0]] = d[1]; c.state.slotTypes[d[0]] = d[2];
+                         c.state.slotLens[d[0]] = d[3]; c.state.slotInvs[d[0]] = d[4]; });
+    eq(c.duplicateSlots(c.state).map((d) => d[0]), [8, 9, 10, 11, 12, 13, 14, 15]);
+    c.state.slots[15] = 1;
+    eq(c.duplicateSlots(c.state), []);   // full: nothing to do
+    c.state.slots = [1, 5, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    c.state.slotTypes = c.state.slotTypes.map(() => 0); c.state.slotLens = c.state.slotLens.map(() => 0);
+    c.state.slotInvs = c.state.slotInvs.map(() => 0);
     console.log("chords ok  ", c.readoutText(c.state, null));
 }
 

@@ -301,6 +301,36 @@ function preset(v) {
     outlet(2, "preset", "set", 0);
 }
 
+// Duplicate: copy chords 1..N (N = last filled slot) into N+1..2N, as far
+// as the 16 slots go, with each chord's type, length and inversion. The
+// slot menus are set through outlet 2 and report back, like a preset.
+function duplicateSlots(st) {
+    var n = 0;
+    for (var i = 0; i < NUM_SLOTS; i++) if (st.slots[i]) n = i + 1;
+    var copies = [];
+    if (n === 0 || n >= NUM_SLOTS) return copies;
+    for (var j = n; j < Math.min(2 * n, NUM_SLOTS); j++) {
+        var from = j - n;
+        copies.push([j, st.slots[from], st.slotTypes[from], st.slotLens[from], st.slotInvs[from]]);
+    }
+    return copies;
+}
+
+function duplicate(v) {
+    if (!ready || v === 0) return;   // ignore the button's release, and set loading
+    var copies = duplicateSlots(state);
+    if (!copies.length) {
+        outlet(2, "readout", "set", "Nothing to duplicate: fill some chords first, and leave empty slots after them.");
+        return;
+    }
+    copies.forEach(function (c) {
+        outlet(2, "slot", c[0], c[1]);
+        outlet(2, "slottype", c[0], c[2]);
+        outlet(2, "slotlen", c[0], c[3]);
+        outlet(2, "slotinv", c[0], c[4]);
+    });
+}
+
 // live.thisdevice -> "loaded": parameters are restored, safe to write to clips.
 function loaded() {
     ready = 1;

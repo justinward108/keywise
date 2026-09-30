@@ -195,6 +195,18 @@ class DeviceUI:
         self._wire(t, message, y)
         return t
 
+    def button(self, name, text, rect, message, annotation):
+        """A click-to-act button. Not a Live parameter, so it is never saved,
+        automated or fired when a set loads."""
+        y = self._y()
+        b = self.p.add("live.text", [self.control_x, y, rect[2], 15.0], rect,
+                       varname=self.var(name), parameter_enable=0, mode=0, text=text, texton=text,
+                       numinlets=1, numoutlets=2, outlettype=["", ""],
+                       annotation=annotation, annotation_name=name)
+        self._on_page(self.var(name))
+        self._wire(b, message, y)
+        return b
+
     def label(self, text, rect, fontsize=8.0, name=None):
         c = self.p.add("live.comment", [self.control_x + 300, self._y(), rect[2], rect[3]], rect,
                        text=text, fontsize=fontsize, numinlets=1, numoutlets=0,
