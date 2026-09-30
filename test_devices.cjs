@@ -66,6 +66,13 @@ const names = (notes) => {
     eq(vl[2].upper, [76, 81, 84]);
     eq(vl[3].upper, [77, 81, 84]);   // F moves the least from E A C: F A C
     c.state.voiceLead = 0; c.state.slotInvs = c.state.slotInvs.map(() => 0);
+    // Per-chord types: C triad, G7, Am9, Fmaj7 in one progression.
+    c.state.slotTypes = [0, 2, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    eq(c.progression(c.state, null).map((x) => x.name), ["C", "G7", "Am9", "Fmaj7"]);
+    eq(c.progression(c.state, null).map((x) => x.upper.length), [3, 4, 5, 4]);
+    c.state.voiceLead = 1;   // mixed sizes still voice-lead without errors
+    assert(c.progression(c.state, null).every((x) => x.upper.every((p) => p > 40 && p < 100)));
+    c.state.voiceLead = 0; c.state.slotTypes = c.state.slotTypes.map(() => 0);
     console.log("chords ok  ", c.readoutText(c.state, null));
 }
 

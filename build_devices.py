@@ -61,6 +61,9 @@ LENGTHS = ["1/2 beat", "1 beat", "2 beats", "3 beats", "1 bar", "6 beats", "2 ba
 DEGREES = ["-", "I", "II", "III", "IV", "V", "VI", "VII"]
 SLOT_LENGTHS = ["Len=", "1/8", "1/4", "1/2", "3/4", "1", "1.5", "2", "3", "4"]  # bars; "Len=" = Length menu
 SLOT_INVERSIONS = ["Inv=", "Root", "1st", "2nd", "3rd"]  # "Inv=" = Inversion / Voice Leading
+# Short names of CHORD_TYPES that fit a slot menu; "Type=" = Chord Type menu.
+SLOT_TYPES = ["Type=", "Triad", "7th", "9th", "11th", "13th", "5th", "add9", "sus2", "sus4",
+              "maj9", "min9", "9", "add11", "mM7", "dim7", "aug"]
 STYLES = ["Block", "Strum Up", "Strum Down", "Arp Up", "Arp Down", "Arp Up-Down", "Arp Random"]
 RATES = ["1/64", "1/32", "1/16", "1/8", "1/4", "1/16T", "1/8T"]
 PRESETS = ["Presets…", "I V vi IV", "I vi IV V", "vi IV I V", "ii V I", "vi ii V I",
@@ -73,27 +76,26 @@ DEFAULT_SLOTS = [1, 5, 6, 4] + [0] * 12
 def build_chords():
     p = Patch()
     js = midi_tool_core(p, "js metamuse_chords.js")
-    feedback = p.obj("route readout slot slotlen slotinv preset", 200, 420, inlets=1, outlets=6, width=240)
-    slot_router = p.obj("route " + " ".join(map(str, range(NUM_SLOTS))), 200, 450,
-                        inlets=1, outlets=NUM_SLOTS + 1, width=300)
-    len_router = p.obj("route " + " ".join(map(str, range(NUM_SLOTS))), 200, 480,
-                       inlets=1, outlets=NUM_SLOTS + 1, width=300)
+    # js -> "slot 3 5", "slottype 3 0", ... -> the matching slot menu (presets)
+    slot_fields = ["slot", "slottype", "slotlen", "slotinv"]
+    feedback = p.obj("route readout " + " ".join(slot_fields) + " preset", 200, 420,
+                     inlets=1, outlets=len(slot_fields) + 3, width=280)
     p.connect(js, feedback, 2, 0)
-    p.connect(feedback, slot_router, 1, 0)
-    inv_router = p.obj("route " + " ".join(map(str, range(NUM_SLOTS))), 200, 510,
-                       inlets=1, outlets=NUM_SLOTS + 1, width=300)
-    p.connect(feedback, len_router, 2, 0)
-    p.connect(feedback, inv_router, 3, 0)
+    routers = {}
+    for n, field in enumerate(slot_fields):
+        routers[field] = p.obj("route " + " ".join(map(str, range(NUM_SLOTS))), 200, 450 + n * 30,
+                               inlets=1, outlets=NUM_SLOTS + 1, width=300)
+        p.connect(feedback, routers[field], n + 1, 0)
 
     ui = DeviceUI(p, js)
 
-    # The Generate panel is tiny, so controls are split over four pages.
+    # The Generate panel is tiny, so controls are split over tabbed pages.
     ui.page("Key")
     ui.menu("Root", "Root", NOTES, 0, [0, 18, 32, 16], "root", "Key root note.")
     ui.menu("Scale", "Scale", SCALES, 0, [34, 18, 118, 16], "scale",
             "Scale or mode the chords are built from.")
     ui.menu("Chord Type", "Type", CHORD_TYPES, 0, [0, 37, 76, 16], "type",
-            "Triad (3 notes) to 13th (7 notes) stack notes from the scale, so they follow the mode. The others use a fixed shape on each degree.")
+            "Chord type for every slot set to 'Type='. Triad (3 notes) to 13th (7 notes) stack notes from the scale, so they follow the mode. The others use a fixed shape on each degree.")
     ui.menu("Length", "Len", LENGTHS, 4, [78, 37, 74, 16], "length",
             "Default length of each chord. Slots set to 'Len=' use this; give a slot its own length on the 1-8 / 9-16 pages.")
     ui.numbox("Octave", "Oct", 0, 6, 3, [0, 56, 48, 16], "octave",
@@ -107,28 +109,34 @@ def build_chords():
               "On: repeat the progression until the end of the time selection / loop. Off: write it once.")
     preset = ui.menu("Preset", "Preset", PRESETS, 0, [100, 75, 52, 16], "preset",
                      "Load a common progression into the chord slots (up to 16 chords).")
-    p.connect(feedback, preset, 4, 0)
+    p.connect(feedback, preset, len(slot_fields) + 1, 0)
 
-    # Each chord slot is a column of three menus: chord, length, inversion.
-    # Two groups of four columns fill the page (15 px menus, 1 px apart).
-    for page, first in (("1-8", 0), ("9-16", 8)):
-        ui.page(page)
-        for k in range(8):
+    # Each chord slot is a column of four menus: chord, type, length,
+    # inversion. Four columns per page, four pages for 16 chords.
+    for first in range(0, NUM_SLOTS, 4):
+        ui.page(f"{first + 1}-{first + 4}")
+        for k in range(4):
             i = first + k
-            x, y = (k % 4) * 38, 18 + (k // 4) * 50
-            slot = ui.menu(f"Slot {i + 1}", f"Slot{i + 1}", DEGREES, DEFAULT_SLOTS[i],
-                           [x, y, 36, 15], f"slot {i}",
-                           f"Chord {i + 1} of the progression, as a scale degree. '-' skips it.")
-            p.connect(slot_router, slot, i, 0)
-            length = ui.menu(f"Len {i + 1}", f"Len{i + 1}", SLOT_LENGTHS, 0,
-                             [x, y + 16, 36, 15], f"slotlen {i}",
-                             f"Length of chord {i + 1} in bars. 'Len=' uses the Length menu on the Key page.")
-            p.connect(len_router, length, i, 0)
-            inv = ui.menu(f"Inv {i + 1}", f"Inv{i + 1}", SLOT_INVERSIONS, 0,
-                          [x, y + 32, 36, 15], f"slotinv {i}",
-                          f"Inversion of chord {i + 1}. 'Inv=' follows the Inversion control (and Voice Leading); "
-                          "Root/1st/2nd/3rd fix it for this chord. 3rd needs a 7th chord or bigger.")
-            p.connect(inv_router, inv, i, 0)
+            x = k * 38
+            column = [
+                ("slot", ui.menu(f"Slot {i + 1}", f"Slot{i + 1}", DEGREES, DEFAULT_SLOTS[i],
+                                 [x, 18, 36, 16], f"slot {i}",
+                                 f"Chord {i + 1} of the progression, as a scale degree. '-' skips it.")),
+                ("slottype", ui.menu(f"Type {i + 1}", f"Type{i + 1}", SLOT_TYPES, 0,
+                                     [x, 37, 36, 16], f"slottype {i}",
+                                     f"Chord type of chord {i + 1}. 'Type=' follows Chord Type on the Key page.")),
+                ("slotlen", ui.menu(f"Len {i + 1}", f"Len{i + 1}", SLOT_LENGTHS, 0,
+                                    [x, 56, 36, 16], f"slotlen {i}",
+                                    f"Length of chord {i + 1} in bars. 'Len=' uses the Length menu on the Key page.")),
+                ("slotinv", ui.menu(f"Inv {i + 1}", f"Inv{i + 1}", SLOT_INVERSIONS, 0,
+                                    [x, 75, 36, 16], f"slotinv {i}",
+                                    f"Inversion of chord {i + 1}. 'Inv=' follows the Inversion control (and Voice Leading); "
+                                    "Root/1st/2nd/3rd fix it for this chord. 3rd needs a 7th chord or bigger.")),
+            ]
+            for field, menu in column:
+                p.connect(routers[field], menu, i, 0)
+        ui.label("chord · type · length · inversion", [0, 96, TOOL_W, 14],
+                 name=f"Caption_{first + 1}")
 
     ui.page("Feel")
     ui.menu("Style", "Style", STYLES, 0, [0, 18, 76, 16], "style",
@@ -141,7 +149,7 @@ def build_chords():
 
     readout = ui.readout([0, 116, TOOL_W, 30])
     p.connect(feedback, readout, 0, 0)
-    ui.finish_pages([0, 0, TOOL_W, 14])
+    ui.finish_pages([0, 0, TOOL_W, 14], fontsize=8.0)  # 6 tabs share 152 px
     p.add("live.line", [0, 146, TOOL_W, 5.0], numinlets=1, numoutlets=0)
     return p.to_json("generator", TOOL_W, TOOL_H,
                      "Chord progressions from any key and mode, written into the clip. From METAMUSE.")

@@ -208,13 +208,13 @@ class DeviceUI:
                           text="", fontsize=fontsize, linecount=linecount,
                           numinlets=1, numoutlets=0, textjustification=0)
 
-    def finish_pages(self, tab_rect):
+    def finish_pages(self, tab_rect, fontsize=9.0):
         """Tab bar -> [sel] -> "show this page, hide the rest" -> [thispatcher]."""
         names = self.page_order
         tabs = self.p.add("live.tab", [self.control_x, 20, tab_rect[2], tab_rect[3]], tab_rect,
                           varname="Page", parameter_enable=1, numinlets=1, numoutlets=3,
                           outlettype=["", "", "float"], num_lines_patching=1,
-                          num_lines_presentation=1,
+                          num_lines_presentation=1, fontsize=fontsize,
                           annotation="Switch between pages of controls.", annotation_name="Page",
                           saved_attribute_attributes=param("Page", "Page", 2, 0, enum=names))
         sel = self.p.obj("sel " + " ".join(map(str, range(len(names)))), 700, 20,

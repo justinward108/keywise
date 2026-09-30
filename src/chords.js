@@ -9,7 +9,7 @@
 //   inlet 1  : context dictionary from live.miditool.in (middle outlet)
 //   outlet 0 : "dictionary <name>" -> live.miditool.out
 //   outlet 1 : bang -> live.miditool.in (regenerate when a control changes)
-//   outlet 2 : UI feedback -> [route readout slot slotlen slotinv preset]
+//   outlet 2 : UI feedback -> [route readout slot slottype slotlen slotinv preset]
 
 inlets = 2;
 outlets = 3;
@@ -61,6 +61,8 @@ var state = {
     rate: 2,          // index into RATES
     voiceLead: 0,     // 1 = pick inversions so chords move smoothly
     slots:    [1, 5, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    // Per-slot chord type: 0 = follow Chord Type, n = CHORD_TYPES[n - 1]
+    slotTypes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     slotLens: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     // Per-slot inversion: 0 = follow Inversion / Voice Leading, 1-4 = Root, 1st, 2nd, 3rd
     slotInvs: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -85,16 +87,17 @@ function currentScale(st, ctx) {
 }
 
 // One chord for a 1-based scale degree, or null if the degree doesn't exist
-// in this scale (e.g. degree 7 in a pentatonic scale). `inversion` defaults
-// to the Inversion control.
-function buildChord(st, ctx, degree, inversion) {
+// in this scale (e.g. degree 7 in a pentatonic scale). `inversion` and
+// `type` default to the Inversion and Chord Type controls.
+function buildChord(st, ctx, degree, inversion, type) {
     if (inversion === undefined) inversion = st.inversion;
+    if (type === undefined) type = st.type;
     var sc = currentScale(st, ctx);
     var degIdx = degree - 1;
     if (degIdx < 0 || degIdx >= sc.intervals.length) return null;
 
-    var shape = chordShape(sc.intervals, degIdx, st.type);
-    var def = CHORD_TYPES[st.type];
+    var shape = chordShape(sc.intervals, degIdx, type);
+    var def = CHORD_TYPES[type];
     var rootPc = (sc.root + sc.intervals[degIdx]) % 12;
     var rootMidi = (st.octave + 2) * 12 + sc.root + sc.intervals[degIdx];
 
@@ -132,14 +135,15 @@ function voiceLead(chords) {
 }
 
 // The list of chords from the slots, skipping empty ones. Each chord gets
-// its length in beats (the slot's own length, or the Length menu's) and its
-// inversion (the slot's own, or the Inversion control's).
+// its own chord type, length in beats and inversion where the slot sets
+// them, otherwise the Chord Type, Length and Inversion controls'.
 function progression(st, ctx) {
     var chords = [];
     for (var i = 0; i < st.slots.length; i++) {
         if (!st.slots[i]) continue;
         var own = st.slotInvs[i];
-        var c = buildChord(st, ctx, st.slots[i], own ? own - 1 : st.inversion);
+        var type = st.slotTypes[i] ? st.slotTypes[i] - 1 : st.type;
+        var c = buildChord(st, ctx, st.slots[i], own ? own - 1 : st.inversion, type);
         if (!c) continue;
         c.fixedInversion = own > 0;
         c.beats = SLOT_LENGTHS[st.slotLens[i]] || LENGTHS[st.length];
@@ -271,19 +275,26 @@ function slotlen(i, v) {
 }
 
 // Picking a preset sets the slot menus (and resets their lengths to "=");
+function slottype(i, v) {
+    if (i < 0 || i >= NUM_SLOTS) return;
+    state.slotTypes[i] = v | 0;
+    changed();
+}
+
 function slotinv(i, v) {
     if (i < 0 || i >= NUM_SLOTS) return;
     state.slotInvs[i] = v | 0;
     changed();
 }
 
-// Picking a preset sets the slot menus (and resets their lengths and
-// inversions to "="); each menu then reports back via slot() / slotlen() / slotinv().
+// Picking a preset sets the slot menus (and resets their types, lengths and
+// inversions to "="); each menu then reports back via slot() / slottype() / ...
 function preset(v) {
     var p = PRESETS[v | 0];
     if (!p) return;
     for (var i = 0; i < NUM_SLOTS; i++) {
         outlet(2, "slot", i, p[i] || 0);
+        outlet(2, "slottype", i, 0);
         outlet(2, "slotlen", i, 0);
         outlet(2, "slotinv", i, 0);
     }
