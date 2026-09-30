@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Build the MetaMuse Max for Live devices.
+"""Build the Keywise Max for Live devices.
 
-    MetaMuse Chords      MIDI Tool (Generate)   chord progressions into a clip
-    MetaMuse Bass        MIDI Tool (Transform)  chords -> bassline
-    MetaMuse Melody      MIDI Tool (Transform)  chords -> melody
-    MetaMuse Chord Keys  MIDI Effect            one key plays a full chord
+    Keywise Chords   MIDI Tool (Generate)   chord progressions into a clip
+    Keywise Bass     MIDI Tool (Transform)  chords -> bassline
+    Keywise Melody   MIDI Tool (Transform)  chords -> melody
+    Keywise Keys     MIDI Effect            one key plays a full chord
 
 Each device's script is src/theory.js (shared) + its own file in src/.
 
@@ -55,7 +55,7 @@ def midi_tool_core(p, js_text):
     return js
 
 
-# ─── MetaMuse Chords ─────────────────────────────────────────────────────────
+# ─── Keywise Chords ─────────────────────────────────────────────────────────
 
 LENGTHS = ["1/2 beat", "1 beat", "2 beats", "3 beats", "1 bar", "6 beats", "2 bars", "4 bars"]
 DEGREES = ["-", "I", "II", "III", "IV", "V", "VI", "VII"]
@@ -75,7 +75,7 @@ DEFAULT_SLOTS = [1, 5, 6, 4] + [0] * 12
 
 def build_chords():
     p = Patch()
-    js = midi_tool_core(p, "js metamuse_chords.js")
+    js = midi_tool_core(p, "js keywise_chords.js")
     # js -> "slot 3 5", "slottype 3 0", ... -> the matching slot menu (presets)
     slot_fields = ["slot", "slottype", "slotlen", "slotinv"]
     feedback = p.obj("route readout " + " ".join(slot_fields) + " preset", 200, 420,
@@ -155,10 +155,10 @@ def build_chords():
     ui.finish_pages([0, 0, TOOL_W, 14], fontsize=8.0)  # 6 tabs share 152 px
     p.add("live.line", [0, 146, TOOL_W, 5.0], numinlets=1, numoutlets=0)
     return p.to_json("generator", TOOL_W, TOOL_H,
-                     "Chord progressions from any key and mode, written into the clip. From METAMUSE.")
+                     "Chord progressions from any key and mode, written into the clip.")
 
 
-# ─── MetaMuse Bass / Melody ──────────────────────────────────────────────────
+# ─── Keywise Bass / Melody ──────────────────────────────────────────────────
 
 BASS_PATTERNS = ["Held", "Pulse", "Root-Fifth", "Octaves", "Walking", "Syncopated", "Push"]
 BASS_RATES = ["1/4", "1/8", "1/16", "1/8T"]
@@ -167,7 +167,7 @@ MELODY_RHYTHMS = ["Quarters", "8ths", "16ths", "Mixed"]
 
 def build_lines(mode):
     p = Patch()
-    js = midi_tool_core(p, f"js metamuse_lines.js {mode}")
+    js = midi_tool_core(p, f"js keywise_lines.js {mode}")
     feedback = p.obj("route readout", 200, 420, inlets=1, outlets=2)
     p.connect(js, feedback, 2, 0)
     ui = DeviceUI(p, js)
@@ -183,7 +183,7 @@ def build_lines(mode):
                   "How long each note lasts, as % of its step. Lower = punchier.", "Gate %d")
         ui.numbox("Velocity", "Vel", 1, 127, 100, [100, 19, 52, 16], "velocity", "Note velocity.", "Vel %d")
         top = 40
-        description = "Turns the chords in a clip into a bassline. From METAMUSE."
+        description = "Turns the chords in a clip into a bassline."
     else:
         ui.menu("Rhythm", "Rhythm", MELODY_RHYTHMS, 1, [0, 0, 76, 16], "rhythm",
                 "Note values of the melody. Mixed varies them beat by beat.")
@@ -197,7 +197,7 @@ def build_lines(mode):
         ui.toggle("Repeat", "Repeat Motif", 1, [0, 38, 100, 16], "repeat",
                   "On: every bar reuses the same rhythm, so the melody has a hook. Off: a new rhythm each bar.")
         top = 59
-        description = "Writes a melody that follows the chords in a clip. From METAMUSE."
+        description = "Writes a melody that follows the chords in a clip."
 
     readout = ui.readout([0, top, TOOL_W, TOOL_H - top], linecount=6)
     p.connect(feedback, readout, 0, 0)
@@ -205,17 +205,17 @@ def build_lines(mode):
     return p.to_json("transformation", TOOL_W, TOOL_H, description)
 
 
-# ─── MetaMuse Chord Keys ─────────────────────────────────────────────────────
+# ─── Keywise Keys ─────────────────────────────────────────────────────
 
 MAPPINGS = ["White Keys", "Snap"]
 STRUM_DIRS = ["Up", "Down"]
 KEYS_W, KEYS_H = 300, 169
 
 
-def build_chord_keys():
+def build_keys():
     p = Patch()
     midi_in = p.obj("midiin", 20, 20, inlets=1, outlets=1)
-    js = p.obj("js metamuse_chordkeys.js", 20, 380, inlets=1, outlets=2, width=180)
+    js = p.obj("js keywise_keys.js", 20, 380, inlets=1, outlets=2, width=180)
     midi_out = p.obj("midiout", 20, 420, inlets=1, outlets=0)
     this_device = p.obj("live.thisdevice", 520, 20, inlets=1, outlets=3)
     loaded = p.msg("loaded", 520, 50)
@@ -253,36 +253,38 @@ def build_chord_keys():
     readout = ui.readout([8, 84, KEYS_W - 16, 76], fontsize=13.0, linecount=3)
     p.connect(feedback, readout, 0, 0)
     return p.to_json("midi_effect", KEYS_W, KEYS_H,
-                     "Play one key, get a full chord in your key and mode. From METAMUSE.")
+                     "Play one key, get a full chord in your key and mode.")
 
 
 # ─── BUILD / INSTALL ─────────────────────────────────────────────────────────
 
-# (device file, builder, script name, script source, User Library subfolder)
+# (device file, builder, script name, script source, type, folder in devices/,
+#  folder inside Live's User Library)
 DEVICES = [
-    ("MetaMuse Chords.amxd", build_chords, "metamuse_chords.js", "chords.js",
-     "MIDI Tools/Max Generators"),
-    ("MetaMuse Bass.amxd", lambda: build_lines("bass"), "metamuse_lines.js", "lines.js",
-     "MIDI Tools/Max Transformations"),
-    ("MetaMuse Melody.amxd", lambda: build_lines("melody"), "metamuse_lines.js", "lines.js",
-     "MIDI Tools/Max Transformations"),
-    ("MetaMuse Chord Keys.amxd", build_chord_keys, "metamuse_chordkeys.js", "chordkeys.js",
-     "Presets/MIDI Effects/Max MIDI Effect"),
+    ("Keywise Chords.amxd", build_chords, "keywise_chords.js", "chords.js",
+     "generator", "Generate", "MIDI Tools/Max Generators"),
+    ("Keywise Bass.amxd", lambda: build_lines("bass"), "keywise_lines.js", "lines.js",
+     "transformation", "Transform", "MIDI Tools/Max Transformations"),
+    ("Keywise Melody.amxd", lambda: build_lines("melody"), "keywise_lines.js", "lines.js",
+     "transformation", "Transform", "MIDI Tools/Max Transformations"),
+    ("Keywise Keys.amxd", build_keys, "keywise_keys.js", "keys.js",
+     "midi_effect", "MIDI Effect", "Presets/MIDI Effects/Max MIDI Effect"),
 ]
-
-TYPES = {"MIDI Tools/Max Generators": "generator",
-         "MIDI Tools/Max Transformations": "transformation",
-         "Presets/MIDI Effects/Max MIDI Effect": "midi_effect"}
 
 
 def main():
+    """No argument: build into devices/ (the ready-to-download copies).
+    With a User Library path: also install each device where Live looks for it."""
     user_library = Path(sys.argv[1]) if len(sys.argv) > 1 else None
-    for amxd, builder, script, source, subfolder in DEVICES:
-        out_dir = user_library / subfolder if user_library else HERE / "build" / subfolder
-        out_dir.mkdir(parents=True, exist_ok=True)
-        write_amxd(builder(), TYPES[subfolder], out_dir / amxd)
-        (out_dir / script).write_text(js_source(source))  # the js sits next to its device
-        print(f"Wrote {out_dir / amxd}")
+    for amxd, builder, script, source, amxd_type, download_folder, library_folder in DEVICES:
+        targets = [HERE / "devices" / download_folder]
+        if user_library:
+            targets.append(user_library / library_folder)
+        for out_dir in targets:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            write_amxd(builder(), amxd_type, out_dir / amxd)
+            (out_dir / script).write_text(js_source(source))  # the js sits next to its device
+            print(f"Wrote {out_dir / amxd}")
 
 
 if __name__ == "__main__":

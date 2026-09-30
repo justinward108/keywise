@@ -1,6 +1,6 @@
 // Checks the built device scripts outside of Max.
 //
-//   python3 build_devices.py && node test_devices.cjs
+//   python3 build_devices.py && node test_devices.cjs   (tests the files in devices/)
 //
 // Each script runs in a sandbox with stand-ins for Max's outlet(), post(),
 // Dict and Task, then its functions are called directly.
@@ -10,7 +10,7 @@ const path = require("path");
 const vm = require("vm");
 const assert = require("assert");
 
-const BUILD = path.join(__dirname, "build");
+const BUILD = path.join(__dirname, "devices");
 
 // Arrays made inside the sandbox have their own prototype, so compare as JSON.
 const eq = (actual, expected) => assert.strictEqual(JSON.stringify(actual), JSON.stringify(expected));
@@ -44,7 +44,7 @@ const names = (notes) => {
 
 // ─── Chords ──────────────────────────────────────────────────────────────────
 {
-    const c = load("MIDI Tools/Max Generators", "metamuse_chords.js");
+    const c = load("Generate", "keywise_chords.js");
     const ctx = { time_selection: { start_time: 0, end_time: 16 } };
     eq(names(c.generateNotes(c.state, ctx)),
         ["0:60,64,67", "4:67,71,74", "8:69,72,76", "12:65,69,72"]);
@@ -97,7 +97,7 @@ const chordClip = [];
     ch.forEach((p, k) => chordClip.push({ pitch: p, start_time: i * 4 + k * 0.02, duration: 4, velocity: 100, mute: 0 })));
 
 {
-    const b = load("MIDI Tools/Max Transformations", "metamuse_lines.js", ["bass"]);
+    const b = load("Transform", "keywise_lines.js", ["bass"]);
     const chords = b.detectChords(chordClip);
     eq(chords.map((c) => c.name), ["C", "G", "Am", "F"]);
     const roots = (pattern, rate) => {
@@ -114,7 +114,7 @@ const chordClip = [];
     console.log("            push:   ", b.transform(b.state, chordClip, null).map((n) => n.pitch + "@" + n.start_time).join(" "));
 }
 {
-    const m = load("MIDI Tools/Max Transformations", "metamuse_lines.js", ["melody"]);
+    const m = load("Transform", "keywise_lines.js", ["melody"]);
     const mel = m.transform(m.state, chordClip, null);
     const cMajor = [0, 2, 4, 5, 7, 9, 11];
     assert(mel.length > 8);
@@ -127,9 +127,9 @@ const chordClip = [];
     console.log("melody ok  ", mel.map((n) => n.pitch).join(" "));
 }
 
-// ─── Chord Keys ──────────────────────────────────────────────────────────────
+// ─── Keys ──────────────────────────────────────────────────────────────
 {
-    const k = load("Presets/MIDI Effects/Max MIDI Effect", "metamuse_chordkeys.js");
+    const k = load("MIDI Effect", "keywise_keys.js");
     const bytes = () => k.out.filter((a) => a[0] === 0).map((a) => a[1]);  // outlet(0, byte)
     k.state.voiceLead = 0;
     k.state.root = 9; k.state.scale = 1;  // A natural minor
@@ -150,6 +150,6 @@ const chordClip = [];
 
     k.state.mapping = 1; k.state.root = 0; k.state.scale = 0;  // Snap, C major
     assert.strictEqual(k.chordForKey(k.state, 66, null).name, "IV  F");  // F# snaps to F
-    console.log("chord keys ok");
+    console.log("keys ok");
 }
 console.log("all tests passed");

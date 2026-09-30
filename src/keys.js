@@ -1,4 +1,4 @@
-// ─── MetaMuse Chord Keys (MIDI Effect) ──────────────────────────────────────
+// ─── Keywise Keys (MIDI Effect) ──────────────────────────────────────
 //
 // Play one key, hear a full chord in your chosen key and mode.
 //
