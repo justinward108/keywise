@@ -70,6 +70,7 @@ PRESETS = ["Presets…", "I V vi IV", "I vi IV V", "vi IV I V", "ii V I", "vi ii
            "I IV V IV", "i VI III VII", "i iv v", "i VII VI V", "Canon (8)",
            "12-bar Blues", "Pop Song (16)"]
 NUM_SLOTS = 16
+PROG_NAMES = [f"Prog {b}" for b in "ABCDEFGH"]  # must match BANK_NAMES in src/theory.js
 DEFAULT_SLOTS = [1, 5, 6, 4] + [0] * 12
 
 
@@ -78,9 +79,14 @@ def build_chords():
     js = midi_tool_core(p, "js keywise_chords.js")
     # js -> "slot 3 5", "slottype 3 0", ... -> the matching slot menu (presets)
     slot_fields = ["slot", "slottype", "slotlen", "slotinv"]
-    feedback = p.obj("route readout " + " ".join(slot_fields) + " preset", 200, 420,
-                     inlets=1, outlets=len(slot_fields) + 3, width=280)
+    feedback = p.obj("route readout " + " ".join(slot_fields) + " preset script", 200, 420,
+                     inlets=1, outlets=len(slot_fields) + 4, width=300)
     p.connect(js, feedback, 2, 0)
+    # "script send <control> <value>": js sets a control when a stored Prog is loaded
+    to_patcher = p.obj("prepend script", 520, 420, width=90)
+    controls_patcher = p.obj("thispatcher", 520, 450, inlets=1, outlets=2)
+    p.connect(feedback, to_patcher, len(slot_fields) + 2, 0)
+    p.connect(to_patcher, controls_patcher, 0, 0)
     routers = {}
     for n, field in enumerate(slot_fields):
         routers[field] = p.obj("route " + " ".join(map(str, range(NUM_SLOTS))), 200, 450 + n * 30,
@@ -110,7 +116,10 @@ def build_chords():
     preset = ui.menu("Preset", "Preset", PRESETS, 0, [100, 75, 52, 16], "preset",
                      "Load a common progression into the chord slots (up to 16 chords).")
     p.connect(feedback, preset, len(slot_fields) + 1, 0)
-    ui.button("Duplicate", "Duplicate Chords", [0, 94, TOOL_W, 16], "duplicate",
+    ui.menu("Prog", "Prog", PROG_NAMES, 0, [0, 94, 46, 16], "bank",
+            "Which progression you are editing, A to H. Each letter remembers its own chords and settings; "
+            "Keywise Bass and Melody pick one with their From menu. An empty letter starts as a copy of the current one.")
+    ui.button("Duplicate", "Duplicate Chords", [48, 94, TOOL_W - 48, 16], "duplicate",
               "Copies your chords (with their type, length and inversion) into the next empty slots: "
               "4 chords become 8, press again for 16. Then change the copies.")
 
@@ -163,10 +172,9 @@ def build_chords():
 BASS_PATTERNS = ["Held", "Pulse", "Root-Fifth", "Octaves", "Walking", "Syncopated", "Push"]
 BASS_RATES = ["1/4", "1/8", "1/16", "1/8T"]
 MELODY_RHYTHMS = ["Quarters", "8ths", "16ths", "Mixed"]
-SOURCES = ["From Chords", "From Clip"]
-SOURCE_HELP = ("From Chords: use the progression from Keywise Chords (on any track), looped to fill "
-               "this clip; start from an empty clip. From Clip: use the chords already in this clip "
-               "(they get replaced).")
+SOURCES = PROG_NAMES + ["This Clip"]
+SOURCE_HELP = ("Prog A-H: follow that progression from Keywise Chords, looped to fill this clip; "
+               "start from an empty clip. This Clip: use the chords already in this clip (they get replaced).")
 
 
 def build_lines(mode):

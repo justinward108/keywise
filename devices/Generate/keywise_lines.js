@@ -194,13 +194,53 @@ function readDict(name) {
     return JSON.parse(new Dict(name).stringify());
 }
 
-// ─── SHARED PROGRESSION ──────────────────────────────────────────────────────
-// Keywise Chords publishes its progression in this Max dictionary, which every
-// Keywise device in the Live set can read. Keywise Bass and Melody ("From
-// Chords") build their lines from it, so no clips need copying. Contents:
-//   { key: "C Major", scale: [pitch classes],
-//     cycle: [ { beats: 4, pitches: [60, 64, 67] }, ... ] }   one pass, block chords
-var SHARED_PROGRESSION = "keywise_progression";
+// ─── SHARED PROGRESSIONS (Prog A–H) ─────────────────────────────────────────
+// Keywise Chords keeps up to eight progressions, A to H, in a Max dictionary
+// that every Keywise device in Live can read. Keywise Bass and Melody build
+// their lines from the one picked in their "From" menu. Contents:
+//   { "A": { state: {...Chords settings...}, key: "C Major", scale: [pitch classes],
+//            cycle: [ { beats: 4, pitches: [60, 64, 67] }, ... ] },   one pass, block chords
+//     "B": ... }
+// The dictionary is also saved to keywise_progressions.json next to the
+// devices, so the progressions are still there after Live restarts.
+
+var BANK_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H"];
+var BANKS_DICT = "keywise_progressions";
+var BANKS_FILE = "keywise_progressions.json";
+
+// The patcher this script runs in (null outside Max), for finding its folder.
+var DEVICE_PATCHER = (this && this.patcher) ? this.patcher : null;
+
+function banksFilePath() {
+    var path = DEVICE_PATCHER && DEVICE_PATCHER.filepath;
+    if (!path) return null;
+    return path.slice(0, path.lastIndexOf("/") + 1) + BANKS_FILE;
+}
+
+// All progressions. The first time a device asks, the saved file is loaded
+// (before anything can be written over it).
+var banksFileChecked = 0;
+
+function readBanks() {
+    if (!banksFileChecked) { banksFileChecked = 1; loadBanksFromFile(); }
+    return readDict(BANKS_DICT) || {};
+}
+
+// Load the saved progressions, if this Max session hasn't got any yet.
+function loadBanksFromFile() {
+    var path = banksFilePath();
+    if (!path || typeof File === "undefined") return;
+    if (Object.keys(readDict(BANKS_DICT) || {}).length) return;
+    var f = new File(path, "read");
+    var exists = f.isopen;
+    f.close();
+    if (exists) new Dict(BANKS_DICT).import_json(path);
+}
+
+function saveBanksToFile() {
+    var path = banksFilePath();
+    if (path) new Dict(BANKS_DICT).export_json(path);
+}
 
 // Send notes to live.miditool.out (outlet 0) as a dictionary.
 function sendNotes(dictName, notes) {
@@ -212,10 +252,11 @@ function sendNotes(dictName, notes) {
 // ─── Keywise Bass / Keywise Melody (MIDI Generators) ────────────────────────
 //
 // Writes a bassline or a melody that follows a chord progression. The chords
-// come from one of two places (the "From" menu):
-//   From Chords: the progression Keywise Chords shares (SHARED_PROGRESSION),
-//                looped to fill this clip's time selection. Use an empty clip.
-//   From Clip:   the chords already in this clip, which get replaced.
+// come from the "From" menu:
+//   Prog A-H:   a progression saved by Keywise Chords (see BANK_NAMES in
+//               theory.js), looped to fill this clip's time selection.
+//               Use an empty clip.
+//   This Clip:  the chords already in this clip, which get replaced.
 // The same script runs both devices; the patch passes "bass" or "melody":
 //   [js keywise_lines.js bass]
 //
@@ -235,7 +276,8 @@ var MODE = (typeof jsarguments !== "undefined" && jsarguments[1]) ? String(jsarg
 var BASS_PATTERNS = ["Held", "Pulse", "Root-Fifth", "Octaves", "Walking", "Syncopated", "Push"];
 var BASS_RATES = [1, 1 / 2, 1 / 4, 1 / 3];            // 1/4, 1/8, 1/16, 1/8T in beats
 var MELODY_RHYTHMS = ["Quarters", "8ths", "16ths", "Mixed"];
-var SOURCES = ["From Chords", "From Clip"];
+// "Prog A" ... "Prog H", then "This Clip". Order must match build_devices.py.
+var SOURCES = BANK_NAMES.map(function (b) { return "Prog " + b; }).concat(["This Clip"]);
 
 var state = {
     // bass
@@ -321,7 +363,7 @@ function chordRoot(pitches) {
 }
 
 // The scale to use for passing notes: the clip's Scale if it has one, then
-// the scale Keywise Chords used (From Chords), otherwise every note that
+// the scale Keywise Chords used (Prog A-H), otherwise every note that
 // appears in the chords.
 function scaleFor(chords, ctx, sharedScale) {
     if (ctx && ctx.scale && ctx.scale.scale_intervals && ctx.scale.scale_intervals.length) {
@@ -494,9 +536,10 @@ function chordAt(chords, t) {
 var lastChords = [];
 var lastKey = "";
 
-// The progression shared by Keywise Chords, or null if there isn't one yet.
-function readShared() {
-    var shared = readDict(SHARED_PROGRESSION);
+// The progression saved under Prog <letter> by Keywise Chords, or null if
+// that letter is empty.
+function readShared(letter) {
+    var shared = readBanks()[letter];
     return (shared && shared.cycle && shared.cycle.length) ? shared : null;
 }
 
@@ -519,11 +562,11 @@ function sharedNotes(shared, ctx) {
     return notes;
 }
 
-// Returns the new notes, or null when From Chords has nothing to read yet.
+// Returns the new notes, or null when the chosen Prog letter is empty.
 function transform(st, notes, ctx) {
     var sharedScale = null;
-    if (SOURCES[st.source] === "From Chords") {
-        var shared = readShared();
+    if (st.source < BANK_NAMES.length) {
+        var shared = readShared(BANK_NAMES[st.source]);
         if (!shared) { lastChords = []; return null; }
         notes = sharedNotes(shared, ctx);
         sharedScale = shared.scale;
@@ -540,11 +583,12 @@ function transform(st, notes, ctx) {
 function readoutText() {
     var part = MODE === "melody" ? "a melody" : "a bassline";
     if (!lastChords.length) {
-        return SOURCES[state.source] === "From Chords" ?
-            "From Chords: make a progression with Keywise Chords, then press Generate here to write " + part + " over it." :
-            "From Clip: open a clip of chords and press Generate to turn them into " + part + ".";
+        return state.source < BANK_NAMES.length ?
+            SOURCES[state.source] + " is empty. In Keywise Chords, set Prog to " + BANK_NAMES[state.source] +
+            " and make a progression, then press Generate here to write " + part + " over it." :
+            "This Clip: open a clip of chords and press Generate to turn them into " + part + ".";
     }
-    return (lastKey ? lastKey + ":  " : "Chords:  ") +
+    return (lastKey ? SOURCES[state.source] + " · " + lastKey + ":  " : "Chords:  ") +
         lastChords.map(function (c) { return c.name; }).join("  ");
 }
 

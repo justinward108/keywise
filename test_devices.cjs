@@ -20,7 +20,9 @@ function load(subfolder, script, args) {
     const out = [];
     const sandbox = {
         jsarguments: [script].concat(args || []),
-        outlet: (...a) => out.push(a),
+        // Messages a device sends to its own controls come straight back in,
+        // like in Max (set sandbox.onOutlet to wire them up).
+        outlet: (...a) => { out.push(a); if (sandbox.onOutlet) sandbox.onOutlet(a); },
         post: () => {},
         Task: function (fn) { this.schedule = () => fn(); this.cancel = () => {}; },
         // Named dictionaries are shared by every device, as in Max.
@@ -100,7 +102,7 @@ const chordClip = [];
 
 {
     const b = load("Generate", "keywise_lines.js", ["bass"]);
-    b.state.source = 1;   // From Clip
+    b.state.source = 8;   // This Clip
     const chords = b.detectChords(chordClip);
     eq(chords.map((c) => c.name), ["C", "G", "Am", "F"]);
     const roots = (pattern, rate) => {
@@ -118,7 +120,7 @@ const chordClip = [];
 }
 {
     const m = load("Generate", "keywise_lines.js", ["melody"]);
-    m.state.source = 1;   // From Clip
+    m.state.source = 8;   // This Clip
     const mel = m.transform(m.state, chordClip, null);
     const cMajor = [0, 2, 4, 5, 7, 9, 11];
     assert(mel.length > 8);
@@ -131,30 +133,53 @@ const chordClip = [];
     console.log("melody ok  ", mel.map((n) => n.pitch).join(" "));
 }
 
-// ─── From Chords: Bass/Melody read the progression Keywise Chords shares ─────
+// ─── Prog A-H: Chords saves progressions, Bass/Melody pick one ───────────────
 {
+    const c = load("Generate", "keywise_chords.js");
+    // Wire Chords' control messages back in, as the patch does in Live.
+    const control = { Root: "root", Scale: "scale", Clip_Scale: "clipscale", Chord_Type: "type",
+        Length: "length", Octave: "octave", Inversion: "inversion", Bass: "bass", Fill: "fill",
+        Style: "style", Rate: "rate", Voice_Leading: "voicelead", Velocity: "velocity" };
+    c.onOutlet = (a) => {
+        if (a[0] !== 2) return;
+        if (a[1] === "script") c[control[a[3]]](a[4]);
+        if (["slot", "slottype", "slotlen", "slotinv"].includes(a[1])) c[a[1]](a[2], a[3]);
+    };
+
     const b = load("Generate", "keywise_lines.js", ["bass"]);
     b.state.pattern = 0;  // Held
-    assert.strictEqual(b.transform(b.state, [], null), null);   // nothing shared yet
-    assert(b.readoutText().startsWith("From Chords: make a progression"));
+    b.state.source = 0;   // Prog A
+    assert.strictEqual(b.transform(b.state, [], null), null);   // nothing saved yet
+    assert(b.readoutText().startsWith("Prog A is empty"));
 
-    const c = load("Generate", "keywise_chords.js");
-    c.state.root = 9; c.state.scale = 1;          // A minor
-    c.state.slots = [1, 6, 3, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    c.state.slotLens[1] = 3;                       // F lasts half a bar
-    c.loaded();                                    // publishes the progression
+    c.loaded();                                    // Prog A: C major I V vi IV
+    c.bank(1);                                     // Prog B starts as a copy...
+    c.root(9); c.scale(1);                         // ...then becomes A minor i VI III VII
+    [1, 6, 3, 7].forEach((d, i) => c.slot(i, d));
+    c.slotlen(1, 3);                               // F lasts half a bar
+    eq(c.readoutText(c.state, null), "B · A Natural Minor:  Am  F  C  G");
 
-    const bass = b.transform(b.state, [], { time_selection: { start_time: 0, end_time: 26 } });
-    eq(bass.map((n) => n.pitch + "@" + n.start_time), [
-        "45@0", "41@4", "36@6", "43@10",          // Am F C G (F half a bar)
-        "45@14", "41@18", "36@20", "43@24"]);      // looped to fill the 26 beats
-    eq(b.readoutText(), "A Natural Minor:  Am  F  C  G  Am  F  C  G");
+    const bangsBefore = c.out.filter((a) => a[0] === 1).length;
+    c.bank(0);                                     // back to A: controls restored
+    eq(c.state.root, 0); eq(c.state.slots.slice(0, 4), [1, 5, 6, 4]); eq(c.state.slotLens[1], 0);
+    eq(c.readoutText(c.state, null), "A · C Major:  C  G  Am  F");
+    eq(c.out.filter((a) => a[0] === 1).length, bangsBefore);   // switching never rewrites the clip
+
+    const sel = (end) => ({ time_selection: { start_time: 0, end_time: end } });
+    eq(b.transform(b.state, [], sel(16)).map((n) => n.pitch), [36, 43, 45, 41]);      // Prog A
+    b.state.source = 1;                                                                 // Prog B
+    eq(b.transform(b.state, [], sel(26)).map((n) => n.pitch + "@" + n.start_time), [
+        "45@0", "41@4", "36@6", "43@10", "45@14", "41@18", "36@20", "43@24"]);        // looped
+    eq(b.readoutText(), "Prog B · A Natural Minor:  Am  F  C  G  Am  F  C  G");
+    b.state.source = 2;                                                                 // Prog C: empty
+    assert.strictEqual(b.transform(b.state, [], sel(16)), null);
 
     const m = load("Generate", "keywise_lines.js", ["melody"]);
+    m.state.source = 1;
     const aMinor = [9, 11, 0, 2, 4, 5, 7];
-    const mel = m.transform(m.state, [], { time_selection: { start_time: 0, end_time: 14 } });
+    const mel = m.transform(m.state, [], sel(14));
     assert(mel.length > 4 && mel.every((n) => aMinor.includes(n.pitch % 12) && n.start_time < 14));
-    console.log("from chords ok");
+    console.log("prog A-H ok");
 }
 
 // ─── Keys ──────────────────────────────────────────────────────────────

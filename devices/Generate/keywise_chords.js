@@ -194,13 +194,53 @@ function readDict(name) {
     return JSON.parse(new Dict(name).stringify());
 }
 
-// ─── SHARED PROGRESSION ──────────────────────────────────────────────────────
-// Keywise Chords publishes its progression in this Max dictionary, which every
-// Keywise device in the Live set can read. Keywise Bass and Melody ("From
-// Chords") build their lines from it, so no clips need copying. Contents:
-//   { key: "C Major", scale: [pitch classes],
-//     cycle: [ { beats: 4, pitches: [60, 64, 67] }, ... ] }   one pass, block chords
-var SHARED_PROGRESSION = "keywise_progression";
+// ─── SHARED PROGRESSIONS (Prog A–H) ─────────────────────────────────────────
+// Keywise Chords keeps up to eight progressions, A to H, in a Max dictionary
+// that every Keywise device in Live can read. Keywise Bass and Melody build
+// their lines from the one picked in their "From" menu. Contents:
+//   { "A": { state: {...Chords settings...}, key: "C Major", scale: [pitch classes],
+//            cycle: [ { beats: 4, pitches: [60, 64, 67] }, ... ] },   one pass, block chords
+//     "B": ... }
+// The dictionary is also saved to keywise_progressions.json next to the
+// devices, so the progressions are still there after Live restarts.
+
+var BANK_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H"];
+var BANKS_DICT = "keywise_progressions";
+var BANKS_FILE = "keywise_progressions.json";
+
+// The patcher this script runs in (null outside Max), for finding its folder.
+var DEVICE_PATCHER = (this && this.patcher) ? this.patcher : null;
+
+function banksFilePath() {
+    var path = DEVICE_PATCHER && DEVICE_PATCHER.filepath;
+    if (!path) return null;
+    return path.slice(0, path.lastIndexOf("/") + 1) + BANKS_FILE;
+}
+
+// All progressions. The first time a device asks, the saved file is loaded
+// (before anything can be written over it).
+var banksFileChecked = 0;
+
+function readBanks() {
+    if (!banksFileChecked) { banksFileChecked = 1; loadBanksFromFile(); }
+    return readDict(BANKS_DICT) || {};
+}
+
+// Load the saved progressions, if this Max session hasn't got any yet.
+function loadBanksFromFile() {
+    var path = banksFilePath();
+    if (!path || typeof File === "undefined") return;
+    if (Object.keys(readDict(BANKS_DICT) || {}).length) return;
+    var f = new File(path, "read");
+    var exists = f.isopen;
+    f.close();
+    if (exists) new Dict(BANKS_DICT).import_json(path);
+}
+
+function saveBanksToFile() {
+    var path = banksFilePath();
+    if (path) new Dict(BANKS_DICT).export_json(path);
+}
 
 // Send notes to live.miditool.out (outlet 0) as a dictionary.
 function sendNotes(dictName, notes) {
@@ -220,7 +260,8 @@ function sendNotes(dictName, notes) {
 //   inlet 1  : context dictionary from live.miditool.in (middle outlet)
 //   outlet 0 : "dictionary <name>" -> live.miditool.out
 //   outlet 1 : bang -> live.miditool.in (regenerate when a control changes)
-//   outlet 2 : UI feedback -> [route readout slot slottype slotlen slotinv preset]
+//   outlet 2 : UI feedback -> [route readout slot slottype slotlen slotinv preset script]
+//              ("script send <control> <value>" goes to [thispatcher] to set a control)
 
 inlets = 2;
 outlets = 3;
@@ -278,6 +319,9 @@ var state = {
     // Per-slot inversion: 0 = follow Inversion / Voice Leading, 1-4 = Root, 1st, 2nd, 3rd
     slotInvs: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 };
+
+var bankIndex = 0;    // which progression (Prog A-H) is being edited
+var loadingBank = 0;  // 1 while a stored progression is being put back on the controls
 
 var context = null;   // last context dictionary from live.miditool.in
 var ready = 0;        // becomes 1 once live.thisdevice fires
@@ -438,7 +482,7 @@ function readoutText(st, ctx) {
     var sc = currentScale(st, ctx);
     var chords = progression(st, ctx);
     if (st.useClipScale && !(ctx && ctx.scale)) return "Using the clip's scale: press Generate";
-    var head = NOTES[sc.root % 12] + " " + sc.name;
+    var head = BANK_NAMES[bankIndex] + " · " + NOTES[sc.root % 12] + " " + sc.name;
     if (!chords.length) return head + ": pick chords above";
     // Kept short: the Generate panel is narrow.
     return head + ":  " + chords.map(function (c) { return c.name; }).join("  ");
@@ -451,22 +495,66 @@ function readoutText(st, ctx) {
 var regenerate = (typeof Task !== "undefined") ?
     new Task(function () { outlet(1, "bang"); }) : null;
 
-// Share the progression (as plain block chords, one pass) with Keywise Bass
-// and Melody. See SHARED_PROGRESSION in theory.js.
-function publishProgression() {
+// ─── PROG A-H ────────────────────────────────────────────────────────────────
+// Every change is saved under the current letter (see BANK_NAMES in
+// theory.js): the settings, so the progression can be brought back, and the
+// chords as plain block chords, which Keywise Bass and Melody read.
+
+// Live controls (by their varname in the patch) and the state they set.
+var CONTROLS = [
+    ["Root", "root"], ["Scale", "scale"], ["Clip_Scale", "useClipScale"], ["Chord_Type", "type"],
+    ["Length", "length"], ["Octave", "octave"], ["Inversion", "inversion"], ["Bass", "bass"],
+    ["Fill", "fill"], ["Style", "style"], ["Rate", "rate"], ["Voice_Leading", "voiceLead"],
+    ["Velocity", "velocity"]
+];
+var SLOT_FIELDS = [["slot", "slots"], ["slottype", "slotTypes"], ["slotlen", "slotLens"], ["slotinv", "slotInvs"]];
+
+var saveFile = (typeof Task !== "undefined") ? new Task(saveBanksToFile) : null;
+
+function saveBank() {
     var sc = currentScale(state, context);
-    var shared = {
+    var banks = readBanks();
+    banks[BANK_NAMES[bankIndex]] = {
+        state: JSON.parse(JSON.stringify(state)),
         key: NOTES[sc.root % 12] + " " + sc.name,
         scale: sc.intervals.map(function (iv) { return (sc.root + iv) % 12; }),
         cycle: progression(state, context).map(function (c) {
             return { beats: c.beats, pitches: chordPitches(c) };
         })
     };
-    new Dict(SHARED_PROGRESSION).parse(JSON.stringify(shared));
+    new Dict(BANKS_DICT).parse(JSON.stringify(banks));
+    if (saveFile) { saveFile.cancel(); saveFile.schedule(500); }  // write the file once changes settle
+}
+
+// Switch to another letter. If it holds a progression, put it back on the
+// controls; if it is empty, it starts as a copy of the current one. The open
+// clip is not rewritten — press Generate when you want it there.
+function bank(v) {
+    v = v | 0;
+    if (v === bankIndex || v < 0 || v >= BANK_NAMES.length) return;
+    var stored = readBanks()[BANK_NAMES[v]];
+    bankIndex = v;
+    if (!stored || !stored.state) {
+        saveBank();
+        outlet(2, "readout", "set", readoutText(state, context));
+        return;
+    }
+
+    loadingBank = 1;
+    CONTROLS.forEach(function (c) {
+        if (stored.state[c[1]] !== undefined) outlet(2, "script", "send", c[0], stored.state[c[1]]);
+    });
+    SLOT_FIELDS.forEach(function (f) {
+        (stored.state[f[1]] || []).forEach(function (value, i) { outlet(2, f[0], i, value); });
+    });
+    loadingBank = 0;
+    saveBank();
+    outlet(2, "readout", "set", readoutText(state, context));
 }
 
 function changed() {
-    publishProgression();
+    if (loadingBank) return;  // bank() saves and redraws once, at the end
+    saveBank();
     outlet(2, "readout", "set", readoutText(state, context));
     if (ready && regenerate) {
         regenerate.cancel();
@@ -560,7 +648,7 @@ function duplicate(v) {
 // live.thisdevice -> "loaded": parameters are restored, safe to write to clips.
 function loaded() {
     ready = 1;
-    publishProgression();
+    saveBank();
     outlet(2, "readout", "set", readoutText(state, context));
 }
 
@@ -571,7 +659,7 @@ function dictionary(name) {
         return;
     }
     // Left inlet: the clip's notes arrive after the context -> generate.
-    publishProgression();
+    saveBank();
     outlet(2, "readout", "set", readoutText(state, context));
     sendNotes("keywise_chords_out", generateNotes(state, context));
 }

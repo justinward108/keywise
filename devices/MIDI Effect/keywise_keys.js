@@ -194,13 +194,53 @@ function readDict(name) {
     return JSON.parse(new Dict(name).stringify());
 }
 
-// ─── SHARED PROGRESSION ──────────────────────────────────────────────────────
-// Keywise Chords publishes its progression in this Max dictionary, which every
-// Keywise device in the Live set can read. Keywise Bass and Melody ("From
-// Chords") build their lines from it, so no clips need copying. Contents:
-//   { key: "C Major", scale: [pitch classes],
-//     cycle: [ { beats: 4, pitches: [60, 64, 67] }, ... ] }   one pass, block chords
-var SHARED_PROGRESSION = "keywise_progression";
+// ─── SHARED PROGRESSIONS (Prog A–H) ─────────────────────────────────────────
+// Keywise Chords keeps up to eight progressions, A to H, in a Max dictionary
+// that every Keywise device in Live can read. Keywise Bass and Melody build
+// their lines from the one picked in their "From" menu. Contents:
+//   { "A": { state: {...Chords settings...}, key: "C Major", scale: [pitch classes],
+//            cycle: [ { beats: 4, pitches: [60, 64, 67] }, ... ] },   one pass, block chords
+//     "B": ... }
+// The dictionary is also saved to keywise_progressions.json next to the
+// devices, so the progressions are still there after Live restarts.
+
+var BANK_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H"];
+var BANKS_DICT = "keywise_progressions";
+var BANKS_FILE = "keywise_progressions.json";
+
+// The patcher this script runs in (null outside Max), for finding its folder.
+var DEVICE_PATCHER = (this && this.patcher) ? this.patcher : null;
+
+function banksFilePath() {
+    var path = DEVICE_PATCHER && DEVICE_PATCHER.filepath;
+    if (!path) return null;
+    return path.slice(0, path.lastIndexOf("/") + 1) + BANKS_FILE;
+}
+
+// All progressions. The first time a device asks, the saved file is loaded
+// (before anything can be written over it).
+var banksFileChecked = 0;
+
+function readBanks() {
+    if (!banksFileChecked) { banksFileChecked = 1; loadBanksFromFile(); }
+    return readDict(BANKS_DICT) || {};
+}
+
+// Load the saved progressions, if this Max session hasn't got any yet.
+function loadBanksFromFile() {
+    var path = banksFilePath();
+    if (!path || typeof File === "undefined") return;
+    if (Object.keys(readDict(BANKS_DICT) || {}).length) return;
+    var f = new File(path, "read");
+    var exists = f.isopen;
+    f.close();
+    if (exists) new Dict(BANKS_DICT).import_json(path);
+}
+
+function saveBanksToFile() {
+    var path = banksFilePath();
+    if (path) new Dict(BANKS_DICT).export_json(path);
+}
 
 // Send notes to live.miditool.out (outlet 0) as a dictionary.
 function sendNotes(dictName, notes) {
