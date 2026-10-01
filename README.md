@@ -127,7 +127,7 @@ The device has six tabs: **Key · 1-4 · 5-8 · 9-12 · 13-16 · Feel**.
 | **Clip Key** | on / off | Ignore Key and Scale and use the clip's own **Scale** setting (Live's Scale Mode) instead. |
 | **Fill** | on / off | On (default): repeat the progression until the selection is full. Off: write it once. |
 | **Presets** | see below | Loads a progression into the chord slots and resets their type, length and inversion. |
-| **Duplicate Chords** | button | Copies your chords into the next empty slots. See [Duplicate Chords](#duplicate-chords). |
+| **Duplicate Chords** | button | Adds another copy of your chords after the last one. See [Duplicate Chords](#duplicate-chords). |
 
 **Presets:**
 
@@ -174,10 +174,21 @@ depends on the scale, and the readout shows the real chord name.
 
 ### Duplicate Chords
 
-On the Key tab. Each press copies your chords, including each one's type, length and inversion, into
-the next empty slots: 4 chords → 8 → 16 (3 chords → 6 → 12). It copies everything up to your last
-filled chord, including empty "-" slots in between. Use it to repeat a phrase and then change the
-copy, e.g. a different last chord for an "answer".
+On the Key tab. Each press adds **one more copy** of your chords, including each one's type, length
+and inversion, after the last filled slot:
+
+- 4 chords → 8 → 12 → 16
+- 3 chords → 6 → 9 → 12 → 15
+- 8 chords → 16
+
+So you can play a phrase three times and change the fourth into a fill, or repeat it twice and
+change the second ending.
+
+The first press copies everything up to your last filled chord (including empty "-" slots in
+between) and remembers how long that original pattern is. Later presses keep adding copies of those
+original chords, even if you've already changed some of the copies. If the copy doesn't fit in the
+16 slots, as much as fits is added. (After Live restarts, the next press starts over and copies
+everything you have.)
 
 If all 16 slots are used, or no chords are filled in, it does nothing and says why in the readout.
 

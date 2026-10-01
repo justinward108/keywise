@@ -111,8 +111,8 @@ def build_chords():
                      "Load a common progression into the chord slots (up to 16 chords).")
     p.connect(feedback, preset, len(slot_fields) + 1, 0)
     ui.button("Duplicate", "Duplicate Chords", [0, 94, TOOL_W, 16], "duplicate",
-              "Copies your chords (with their type, length and inversion) into the next empty slots: "
-              "4 chords become 8, press again for 16. Then change the copies.")
+              "Each press adds one more copy of your chords (with their type, length and inversion) "
+              "after the last one: 4 -> 8 -> 12 -> 16. Then change a copy, e.g. a fill at the end.")
 
     # Each chord slot is a column of four menus: chord, type, length,
     # inversion. Four columns per page, four pages for 16 chords.

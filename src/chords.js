@@ -301,15 +301,22 @@ function preset(v) {
     outlet(2, "preset", "set", 0);
 }
 
-// Duplicate: copy chords 1..N (N = last filled slot) into N+1..2N, as far
-// as the 16 slots go, with each chord's type, length and inversion. The
-// slot menus are set through outlet 2 and report back, like a preset.
+// Duplicate: each press adds one more copy of your original chords after
+// the last filled slot, so 4 chords go 4 -> 8 -> 12 -> 16 (play a phrase
+// three times, change the fourth). Each copy keeps the chord's type, length
+// and inversion. The first press copies everything up to the last filled
+// slot and remembers that length; later presses keep adding that many,
+// even if you've edited the copies. The slot menus are set through
+// outlet 2 and report back, like a preset.
+var dupBlock = 0;   // length of the original pattern, set by the first press
+
 function duplicateSlots(st) {
     var n = 0;
     for (var i = 0; i < NUM_SLOTS; i++) if (st.slots[i]) n = i + 1;
     var copies = [];
     if (n === 0 || n >= NUM_SLOTS) return copies;
-    for (var j = n; j < Math.min(2 * n, NUM_SLOTS); j++) {
+    if (!(dupBlock && n > dupBlock && n % dupBlock === 0)) dupBlock = n;  // a new pattern
+    for (var j = n; j < Math.min(n + dupBlock, NUM_SLOTS); j++) {
         var from = j - n;
         copies.push([j, st.slots[from], st.slotTypes[from], st.slotLens[from], st.slotInvs[from]]);
     }
