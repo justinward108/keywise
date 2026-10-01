@@ -194,6 +194,14 @@ function readDict(name) {
     return JSON.parse(new Dict(name).stringify());
 }
 
+// ─── SHARED PROGRESSION ──────────────────────────────────────────────────────
+// Keywise Chords publishes its progression in this Max dictionary, which every
+// Keywise device in the Live set can read. Keywise Bass and Melody ("From
+// Chords") build their lines from it, so no clips need copying. Contents:
+//   { key: "C Major", scale: [pitch classes],
+//     cycle: [ { beats: 4, pitches: [60, 64, 67] }, ... ] }   one pass, block chords
+var SHARED_PROGRESSION = "keywise_progression";
+
 // Send notes to live.miditool.out (outlet 0) as a dictionary.
 function sendNotes(dictName, notes) {
     var out = new Dict(dictName);

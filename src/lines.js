@@ -1,12 +1,12 @@
-// ─── Keywise Bass / Keywise Melody (MIDI Transformations) ─────────────────
+// ─── Keywise Bass / Keywise Melody (MIDI Generators) ────────────────────────
 //
-// Reads the chords in the selected notes of a clip and replaces them with a
-// bassline or a melody that follows those chords. The same script runs both
-// devices; the patch passes "bass" or "melody" as its argument:
+// Writes a bassline or a melody that follows a chord progression. The chords
+// come from one of two places (the "From" menu):
+//   From Chords: the progression Keywise Chords shares (SHARED_PROGRESSION),
+//                looped to fill this clip's time selection. Use an empty clip.
+//   From Clip:   the chords already in this clip, which get replaced.
+// The same script runs both devices; the patch passes "bass" or "melody":
 //   [js keywise_lines.js bass]
-//
-// Typical use: duplicate a chord clip onto a bass (or lead) track, select all
-// notes, apply the transformation.
 //
 // Patch wiring (see build_devices.py):
 //   inlet 0  : UI messages and the notes dictionary from live.miditool.in
@@ -24,6 +24,7 @@ var MODE = (typeof jsarguments !== "undefined" && jsarguments[1]) ? String(jsarg
 var BASS_PATTERNS = ["Held", "Pulse", "Root-Fifth", "Octaves", "Walking", "Syncopated", "Push"];
 var BASS_RATES = [1, 1 / 2, 1 / 4, 1 / 3];            // 1/4, 1/8, 1/16, 1/8T in beats
 var MELODY_RHYTHMS = ["Quarters", "8ths", "16ths", "Mixed"];
+var SOURCES = ["From Chords", "From Clip"];
 
 var state = {
     // bass
@@ -38,6 +39,7 @@ var state = {
     variation: 1,      // seed: change it for a different melody
     repeat: 1,         // reuse one bar of rhythm so the melody has a motif
     // both
+    source: 0,         // index into SOURCES
     velocity: 100
 };
 
@@ -107,13 +109,15 @@ function chordRoot(pitches) {
     return { pcs: pcs, root: best, third: third, fifth: fifth, name: NOTES[best] + (suffix || "") };
 }
 
-// The scale to use for passing notes: the clip's Scale if it has one,
-// otherwise every note that appears in the chords.
-function scaleFor(chords, ctx) {
+// The scale to use for passing notes: the clip's Scale if it has one, then
+// the scale Keywise Chords used (From Chords), otherwise every note that
+// appears in the chords.
+function scaleFor(chords, ctx, sharedScale) {
     if (ctx && ctx.scale && ctx.scale.scale_intervals && ctx.scale.scale_intervals.length) {
         var r = ctx.scale.root_note || 0;
         return ctx.scale.scale_intervals.map(function (iv) { return (r + iv) % 12; });
     }
+    if (sharedScale && sharedScale.length) return sharedScale;
     var pcs = [];
     chords.forEach(function (c) {
         c.pcs.forEach(function (pc) { if (pcs.indexOf(pc) < 0) pcs.push(pc); });
@@ -277,21 +281,60 @@ function chordAt(chords, t) {
 // ─── BOTH ────────────────────────────────────────────────────────────────────
 
 var lastChords = [];
+var lastKey = "";
 
+// The progression shared by Keywise Chords, or null if there isn't one yet.
+function readShared() {
+    var shared = readDict(SHARED_PROGRESSION);
+    return (shared && shared.cycle && shared.cycle.length) ? shared : null;
+}
+
+// Lay the shared progression out as block-chord notes, looped to fill the
+// time selection (or played once if there isn't one).
+function sharedNotes(shared, ctx) {
+    var total = 0;
+    shared.cycle.forEach(function (c) { total += c.beats; });
+    var range = selectionRange(ctx) || { start: 0, end: total };
+    var notes = [], t = range.start, i = 0;
+    while (t < range.end - 1e-6 && total > 0) {
+        var c = shared.cycle[i % shared.cycle.length];
+        var dur = Math.min(c.beats, range.end - t);
+        c.pitches.forEach(function (p) {
+            notes.push({ pitch: p, start_time: t, duration: dur, velocity: 100, mute: 0 });
+        });
+        t += c.beats;
+        i++;
+    }
+    return notes;
+}
+
+// Returns the new notes, or null when From Chords has nothing to read yet.
 function transform(st, notes, ctx) {
+    var sharedScale = null;
+    if (SOURCES[st.source] === "From Chords") {
+        var shared = readShared();
+        if (!shared) { lastChords = []; return null; }
+        notes = sharedNotes(shared, ctx);
+        sharedScale = shared.scale;
+        lastKey = shared.key || "";
+    } else {
+        lastKey = "";
+    }
     var chords = detectChords(notes);
     lastChords = chords;
-    var scalePcs = scaleFor(chords, ctx);
+    var scalePcs = scaleFor(chords, ctx, sharedScale);
     return MODE === "melody" ? melodyLine(st, chords, scalePcs) : bassLine(st, chords, scalePcs);
 }
 
 function readoutText() {
+    var part = MODE === "melody" ? "a melody" : "a bassline";
     if (!lastChords.length) {
-        return MODE === "melody" ?
-            "Select chord notes, then Transform to write a melody over them." :
-            "Select chord notes, then Transform to turn them into a bassline.";
+        return SOURCES[state.source] === "From Chords" ?
+            "From Chords: make a progression with Keywise Chords, then press Generate here to write " + part + " over it." :
+            "From Clip: open a clip of chords and press Generate to turn them into " + part + ".";
     }
-    return "Chords found:  " + lastChords.map(function (c) { return c.name; }).join("  ");
+    return (lastKey ? lastKey + ":  " : "Chords:  ") +
+        lastChords.map(function (c) { return c.name; }).join("  ");
 }
 
 // ─── MAX GLUE ────────────────────────────────────────────────────────────────
@@ -300,7 +343,7 @@ var reapply = (typeof Task !== "undefined") ?
     new Task(function () { outlet(1, "bang"); }) : null;
 
 function changed() {
-    // Only re-apply once the user has pressed Transform at least once, so
+    // Only re-apply once the user has pressed Generate at least once, so
     // moving a control never rewrites a clip by surprise.
     if (ready && lastChords.length && reapply) {
         reapply.cancel();
@@ -317,6 +360,7 @@ function density(v)   { state.density = Math.max(0, Math.min(100, v | 0)); chang
 function variation(v) { state.variation = v | 0; changed(); }
 function repeat(v)    { state.repeat = v ? 1 : 0; changed(); }
 function velocity(v)  { state.velocity = Math.max(1, Math.min(127, v | 0)); changed(); }
+function source(v)    { state.source = v | 0; outlet(2, "readout", "set", readoutText()); changed(); }
 
 function loaded() {
     ready = 1;
@@ -328,5 +372,6 @@ function dictionary(name) {
     if (inlet === 1) { context = data; return; }
     var out = transform(state, data.notes || [], context);
     outlet(2, "readout", "set", readoutText());
-    sendNotes("keywise_" + MODE + "_out", out);
+    // Nothing to read yet: hand the clip's notes back unchanged rather than erasing them.
+    sendNotes("keywise_" + MODE + "_out", out === null ? (data.notes || []) : out);
 }

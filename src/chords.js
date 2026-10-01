@@ -240,7 +240,22 @@ function readoutText(st, ctx) {
 var regenerate = (typeof Task !== "undefined") ?
     new Task(function () { outlet(1, "bang"); }) : null;
 
+// Share the progression (as plain block chords, one pass) with Keywise Bass
+// and Melody. See SHARED_PROGRESSION in theory.js.
+function publishProgression() {
+    var sc = currentScale(state, context);
+    var shared = {
+        key: NOTES[sc.root % 12] + " " + sc.name,
+        scale: sc.intervals.map(function (iv) { return (sc.root + iv) % 12; }),
+        cycle: progression(state, context).map(function (c) {
+            return { beats: c.beats, pitches: chordPitches(c) };
+        })
+    };
+    new Dict(SHARED_PROGRESSION).parse(JSON.stringify(shared));
+}
+
 function changed() {
+    publishProgression();
     outlet(2, "readout", "set", readoutText(state, context));
     if (ready && regenerate) {
         regenerate.cancel();
@@ -334,6 +349,7 @@ function duplicate(v) {
 // live.thisdevice -> "loaded": parameters are restored, safe to write to clips.
 function loaded() {
     ready = 1;
+    publishProgression();
     outlet(2, "readout", "set", readoutText(state, context));
 }
 
@@ -344,6 +360,7 @@ function dictionary(name) {
         return;
     }
     // Left inlet: the clip's notes arrive after the context -> generate.
+    publishProgression();
     outlet(2, "readout", "set", readoutText(state, context));
     sendNotes("keywise_chords_out", generateNotes(state, context));
 }

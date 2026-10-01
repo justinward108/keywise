@@ -2,8 +2,8 @@
 """Build the Keywise Max for Live devices.
 
     Keywise Chords   MIDI Tool (Generate)   chord progressions into a clip
-    Keywise Bass     MIDI Tool (Transform)  chords -> bassline
-    Keywise Melody   MIDI Tool (Transform)  chords -> melody
+    Keywise Bass     MIDI Tool (Generate)   chords -> bassline
+    Keywise Melody   MIDI Tool (Generate)   chords -> melody
     Keywise Keys     MIDI Effect            one key plays a full chord
 
 Each device's script is src/theory.js (shared) + its own file in src/.
@@ -163,6 +163,10 @@ def build_chords():
 BASS_PATTERNS = ["Held", "Pulse", "Root-Fifth", "Octaves", "Walking", "Syncopated", "Push"]
 BASS_RATES = ["1/4", "1/8", "1/16", "1/8T"]
 MELODY_RHYTHMS = ["Quarters", "8ths", "16ths", "Mixed"]
+SOURCES = ["From Chords", "From Clip"]
+SOURCE_HELP = ("From Chords: use the progression from Keywise Chords (on any track), looped to fill "
+               "this clip; start from an empty clip. From Clip: use the chords already in this clip "
+               "(they get replaced).")
 
 
 def build_lines(mode):
@@ -182,8 +186,9 @@ def build_lines(mode):
         ui.numbox("Gate", "Gate", 10, 100, 90, [50, 19, 48, 16], "gate",
                   "How long each note lasts, as % of its step. Lower = punchier.", "Gate %d")
         ui.numbox("Velocity", "Vel", 1, 127, 100, [100, 19, 52, 16], "velocity", "Note velocity.", "Vel %d")
-        top = 40
-        description = "Turns the chords in a clip into a bassline."
+        ui.menu("Source", "From", SOURCES, 0, [0, 38, 100, 16], "source", SOURCE_HELP)
+        top = 59
+        description = "Writes a bassline that follows your Keywise Chords progression or a clip's chords."
     else:
         ui.menu("Rhythm", "Rhythm", MELODY_RHYTHMS, 1, [0, 0, 76, 16], "rhythm",
                 "Note values of the melody. Mixed varies them beat by beat.")
@@ -194,15 +199,16 @@ def build_lines(mode):
         ui.numbox("Variation", "Var", 1, 99, 1, [50, 19, 48, 16], "variation",
                   "Change this for a different melody over the same chords.", "Var %d")
         ui.numbox("Velocity", "Vel", 1, 127, 100, [100, 19, 52, 16], "velocity", "Note velocity.", "Vel %d")
-        ui.toggle("Repeat", "Repeat Motif", 1, [0, 38, 100, 16], "repeat",
+        ui.toggle("Repeat", "Repeat Motif", 1, [0, 38, 74, 16], "repeat",
                   "On: every bar reuses the same rhythm, so the melody has a hook. Off: a new rhythm each bar.")
+        ui.menu("Source", "From", SOURCES, 0, [76, 38, 76, 16], "source", SOURCE_HELP)
         top = 59
-        description = "Writes a melody that follows the chords in a clip."
+        description = "Writes a melody that follows your Keywise Chords progression or a clip's chords."
 
     readout = ui.readout([0, top, TOOL_W, TOOL_H - top], linecount=6)
     p.connect(feedback, readout, 0, 0)
     p.add("live.line", [0, 146, TOOL_W, 5.0], numinlets=1, numoutlets=0)
-    return p.to_json("transformation", TOOL_W, TOOL_H, description)
+    return p.to_json("generator", TOOL_W, TOOL_H, description)
 
 
 # ─── Keywise Keys ─────────────────────────────────────────────────────
@@ -264,9 +270,9 @@ DEVICES = [
     ("Keywise Chords.amxd", build_chords, "keywise_chords.js", "chords.js",
      "generator", "Generate", "MIDI Tools/Max Generators"),
     ("Keywise Bass.amxd", lambda: build_lines("bass"), "keywise_lines.js", "lines.js",
-     "transformation", "Transform", "MIDI Tools/Max Transformations"),
+     "generator", "Generate", "MIDI Tools/Max Generators"),
     ("Keywise Melody.amxd", lambda: build_lines("melody"), "keywise_lines.js", "lines.js",
-     "transformation", "Transform", "MIDI Tools/Max Transformations"),
+     "generator", "Generate", "MIDI Tools/Max Generators"),
     ("Keywise Keys.amxd", build_keys, "keywise_keys.js", "keys.js",
      "midi_effect", "MIDI Effect", "Presets/MIDI Effects/Max MIDI Effect"),
 ]

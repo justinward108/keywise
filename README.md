@@ -10,9 +10,13 @@ works out the notes for whichever key and mode you pick.
 | Device | What it does | Where it lives in Live |
 |---|---|---|
 | [**Keywise Chords**](#keywise-chords) | Writes chord progressions (up to 16 chords) into a MIDI clip | Clip view → **Generate** |
-| [**Keywise Bass**](#keywise-bass) | Turns the chords in a clip into a bassline | Clip view → **Transform** |
-| [**Keywise Melody**](#keywise-melody) | Writes a melody that follows the chords in a clip | Clip view → **Transform** |
+| [**Keywise Bass**](#keywise-bass) | Writes a bassline that follows your chords | Clip view → **Generate** |
+| [**Keywise Melody**](#keywise-melody) | Writes a melody that follows your chords | Clip view → **Generate** |
 | [**Keywise Keys**](#keywise-keys) | Play one key, hear a full chord in your key | MIDI effect, in front of any instrument |
+
+**They work as a team:** make a progression with Keywise Chords, then open an empty clip on your bass
+or lead track and press Generate with Keywise Bass or Keywise Melody. They read the progression
+straight from Keywise Chords; no copying clips around.
 
 **Contents:** [Requirements](#requirements) · [Install](#install) · [Quick start](#quick-start) ·
 [Chords](#keywise-chords) · [Bass](#keywise-bass) · [Melody](#keywise-melody) · [Keys](#keywise-keys) ·
@@ -37,8 +41,8 @@ The devices are in the `devices` folder:
 
 ```
 devices/
-├── Generate/       Keywise Chords.amxd, keywise_chords.js
-├── Transform/      Keywise Bass.amxd, Keywise Melody.amxd, keywise_lines.js
+├── Generate/       Keywise Chords.amxd, keywise_chords.js,
+│                   Keywise Bass.amxd, Keywise Melody.amxd, keywise_lines.js
 └── MIDI Effect/    Keywise Keys.amxd, keywise_keys.js
 ```
 
@@ -54,9 +58,8 @@ Copy the **files** (not the folders, so nothing already there gets replaced):
 
 | Copy everything inside… | …into this folder of your User Library |
 |---|---|
-| `devices/Generate` | `MIDI Tools/Max Generators` |
-| `devices/Transform` | `MIDI Tools/Max Transformations` |
-| `devices/MIDI Effect` | `Presets/MIDI Effects/Max MIDI Effect` |
+| `devices/Generate` (5 files) | `MIDI Tools/Max Generators` |
+| `devices/MIDI Effect` (2 files) | `Presets/MIDI Effects/Max MIDI Effect` |
 
 - If one of those folders doesn't exist yet, create it. The names must match exactly.
 - Every `.amxd` device needs its `.js` file in the **same folder**. Keywise Bass and Keywise Melody
@@ -66,14 +69,17 @@ Copy the **files** (not the folders, so nothing already there gets replaced):
 
 The devices now appear in:
 
-- **Keywise Chords**: in a MIDI clip's **Generate** section menu.
-- **Keywise Bass** and **Keywise Melody**: in a MIDI clip's **Transform** section menu.
+- **Keywise Chords**, **Keywise Bass** and **Keywise Melody**: in a MIDI clip's **Generate** section menu.
 - **Keywise Keys**: in the browser under **User Library → Presets → MIDI Effects → Max MIDI Effect**
   (or search for "Keywise").
 
 ### Updating
 
 Download the new version and copy the files again, replacing the old ones. Restart Live.
+
+If you installed a version where Keywise Bass and Melody were in the **Transform** section, delete
+`Keywise Bass.amxd`, `Keywise Melody.amxd` and `keywise_lines.js` from
+`MIDI Tools/Max Transformations`; they now live in `MIDI Tools/Max Generators`.
 
 ### Uninstalling
 
@@ -87,8 +93,9 @@ Delete the files you copied (the `Keywise …amxd` devices and the `keywise_….
 3. Choose **Keywise Chords** from the Generate menu and press **Generate**.
    You get **I – V – vi – IV** in C major: C, G, Am, F.
 4. Change the key, the scale/mode, the chords or anything else on the device. The clip updates as you go.
-5. For a bassline: duplicate the clip onto a bass track, open it, select all notes (**Cmd/Ctrl + A**),
-   choose **Keywise Bass** in the **Transform** section and press **Transform**.
+5. For a bassline: on a bass track, create an empty MIDI clip of the same length and open it. In its
+   **Generate** section choose **Keywise Bass** and press **Generate**. The bassline follows your
+   Keywise Chords progression. **Keywise Melody** works the same way on a lead track.
 
 Hover over any control and Live's **Info View** (bottom left) explains what it does.
 
@@ -217,20 +224,28 @@ A 13th uses every note of a 7-note scale. 11ths and 13ths are dense; a lower **O
 
 ## Keywise Bass
 
-*A MIDI Tool in the clip view's **Transform** section.* Reads the chords in a clip and replaces them
-with a bassline that follows them.
+*A MIDI Tool in the clip view's **Generate** section.* Writes a bassline that follows a chord
+progression: either the one you made in Keywise Chords, or the chords already in the clip.
 
 ### How to use it
 
-1. Make a clip of chords (for example with Keywise Chords).
-2. **Duplicate** the clip onto your bass track and open the copy.
-3. **Select all notes** (Cmd/Ctrl + A).
-4. In the **Transform** section choose **Keywise Bass** and press **Transform**.
-5. Adjust the controls. The bassline keeps updating from your original chords until you click
-   elsewhere in Live. After that the clip contains the bassline; start again from a fresh copy of
-   the chords if you want to redo it.
+**From Chords** (default):
 
-The readout lists the chords it found, e.g. `Chords found: C G Am F`.
+1. Make a progression with **Keywise Chords** on any track.
+2. On your bass track, create an **empty MIDI clip** (same length as the chord clip) and open it.
+3. In the **Generate** section choose **Keywise Bass** and press **Generate**.
+4. Adjust the controls; the bassline updates as you go.
+
+The progression is looped to fill the clip, so a 4-bar progression fills an 8-bar clip twice.
+If you change the chords in Keywise Chords later, open the bass clip and press **Generate** again.
+
+**From Clip:**
+
+1. Open a clip that contains chords (for example a copy of your chord clip, or chords you played).
+2. Choose **Keywise Bass** in the **Generate** section, set **From** to **From Clip** and press **Generate**.
+3. The chords in the clip are replaced by the bassline.
+
+The readout shows the chords being followed, e.g. `A Natural Minor: Am F C G`.
 
 ### Controls
 
@@ -241,6 +256,7 @@ The readout lists the chords it found, e.g. `Chords found: C G Am F`.
 | **Oct** | 0 – 3 | Bass octave. Live's naming: C1 = MIDI note 36. Default: 1. |
 | **Gate** | 10 – 100 | How long each note lasts, as a % of its step. Lower = punchier. Default: 90. |
 | **Vel** | 1 – 127 | Note velocity. Default: 100. |
+| **From** | From Chords, From Clip | Where the chords come from (see above). Default: From Chords. |
 
 | Pattern | What you get |
 |---|---|
@@ -256,13 +272,14 @@ The readout lists the chords it found, e.g. `Chords found: C G Am F`.
 
 ## Keywise Melody
 
-*A MIDI Tool in the clip view's **Transform** section.* Reads the chords in a clip and replaces them
-with a melody that fits them.
+*A MIDI Tool in the clip view's **Generate** section.* Writes a melody that fits a chord progression:
+either the one you made in Keywise Chords, or the chords already in the clip.
 
 ### How to use it
 
-Same as Keywise Bass: duplicate the chord clip onto a lead track, select all notes, choose
-**Keywise Melody** in the **Transform** section and press **Transform**, then adjust.
+Same as [Keywise Bass](#how-to-use-it): with **From Chords**, open an empty clip on your lead track,
+choose **Keywise Melody** in the **Generate** section and press **Generate**. With **From Clip**, open
+a clip of chords instead; they get replaced by the melody.
 
 Notes on the beat land on **chord notes**; notes in between move through the **scale**, so the
 melody always fits. Treat it as a sketch: keep what you like and edit the rest.
@@ -277,15 +294,19 @@ melody always fits. Treat it as a sketch: keep what you like and edit the rest.
 | **Var** | 1 – 99 | Variation. Every number is a different melody over the same chords, and the same number always gives the same melody. Flip through them to audition ideas. |
 | **Vel** | 1 – 127 | Velocity of notes on the beat (notes between beats are a little softer). Default: 100. |
 | **Repeat Motif** | on / off | On (default): every bar reuses the same rhythm, so the melody has a hook. Off: a new rhythm each bar. |
+| **From** | From Chords, From Clip | Where the chords come from. Default: From Chords. |
 
 ### Notes for Bass and Melody
 
-- **Block or strummed chords work best.** Chords are detected from notes that start together (within
+- **From Chords follows the most recent Keywise Chords progression** in your Live set, the one you
+  last changed or generated. It's available as soon as a set with Keywise Chords in it is open.
+  If there's none yet, the readout says so and the clip is left untouched.
+- **From Clip: block or strummed chords work best.** Chords are detected from notes that start together (within
   1/8 of a beat), and each chord lasts until the next one starts. Arpeggiated clips are read as
   single notes and give odd results.
 - **Inversions are understood.** B–D–G is read as G, not as a B chord.
-- **Passing notes** come from the clip's **Scale** setting if it has one, otherwise from the notes
-  that appear in your chords.
+- **Passing notes** come from the clip's **Scale** setting if it has one, otherwise from the key and
+  scale set in Keywise Chords (From Chords) or the notes in your chords (From Clip).
 
 ---
 
@@ -354,11 +375,13 @@ that's what **I, ii, iii, IV, V, vi, vii°** mean.
 
 | Problem | Fix |
 |---|---|
-| The device isn't in the Generate / Transform menu | Restart Live. Check the files are in exactly the folders listed under [Install](#install). |
+| A device isn't in the Generate menu | Restart Live. Check the files are in exactly the folders listed under [Install](#install). |
 | The Max window says it can't find a `.js` file | The `.js` file must be in the same folder as the `.amxd`. Copy both. |
 | Nothing happens when I press Generate | A MIDI clip must be open in the clip view. |
 | The Generate section is cut off | Drag the divider above the clip view upwards to make it taller, or scroll the left-hand column. |
-| Bass or Melody gives strange results | Use block or strummed chords, select all the chord notes before pressing Transform, and run it on a copy of the chords (not on a clip it already transformed). |
+| Bass or Melody says "make a progression with Keywise Chords" | Generate a progression with Keywise Chords first (it shares it automatically), then press Generate again. |
+| Bass or Melody doesn't match my new chords | They don't follow changes on their own: open the bass/melody clip and press Generate again. |
+| From Clip gives strange results | Use block or strummed chords, and run it on chords, not on a clip that already holds a bassline or melody. |
 | Keywise Keys plays nothing on black keys | That's White Keys mode. Switch **Keys** to **Snap** to use every key. |
 | My settings were reset after updating | New versions can add or move controls; set them again. |
 

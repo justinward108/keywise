@@ -11,6 +11,7 @@ const vm = require("vm");
 const assert = require("assert");
 
 const BUILD = path.join(__dirname, "devices");
+const dicts = {};
 
 // Arrays made inside the sandbox have their own prototype, so compare as JSON.
 const eq = (actual, expected) => assert.strictEqual(JSON.stringify(actual), JSON.stringify(expected));
@@ -22,10 +23,11 @@ function load(subfolder, script, args) {
         outlet: (...a) => out.push(a),
         post: () => {},
         Task: function (fn) { this.schedule = () => fn(); this.cancel = () => {}; },
+        // Named dictionaries are shared by every device, as in Max.
         Dict: function (name) {
             this.name = name;
-            this.parse = (s) => { this.data = JSON.parse(s); };
-            this.stringify = () => JSON.stringify(this.data);
+            this.parse = (s) => { dicts[name] = JSON.parse(s); };
+            this.stringify = () => JSON.stringify(dicts[name] || {});
         },
         console,
     };
@@ -97,7 +99,8 @@ const chordClip = [];
     ch.forEach((p, k) => chordClip.push({ pitch: p, start_time: i * 4 + k * 0.02, duration: 4, velocity: 100, mute: 0 })));
 
 {
-    const b = load("Transform", "keywise_lines.js", ["bass"]);
+    const b = load("Generate", "keywise_lines.js", ["bass"]);
+    b.state.source = 1;   // From Clip
     const chords = b.detectChords(chordClip);
     eq(chords.map((c) => c.name), ["C", "G", "Am", "F"]);
     const roots = (pattern, rate) => {
@@ -114,7 +117,8 @@ const chordClip = [];
     console.log("            push:   ", b.transform(b.state, chordClip, null).map((n) => n.pitch + "@" + n.start_time).join(" "));
 }
 {
-    const m = load("Transform", "keywise_lines.js", ["melody"]);
+    const m = load("Generate", "keywise_lines.js", ["melody"]);
+    m.state.source = 1;   // From Clip
     const mel = m.transform(m.state, chordClip, null);
     const cMajor = [0, 2, 4, 5, 7, 9, 11];
     assert(mel.length > 8);
@@ -125,6 +129,32 @@ const chordClip = [];
         assert(chord.pcs.includes(n.pitch % 12), "downbeat not a chord tone at " + n.start_time);
     });
     console.log("melody ok  ", mel.map((n) => n.pitch).join(" "));
+}
+
+// ─── From Chords: Bass/Melody read the progression Keywise Chords shares ─────
+{
+    const b = load("Generate", "keywise_lines.js", ["bass"]);
+    b.state.pattern = 0;  // Held
+    assert.strictEqual(b.transform(b.state, [], null), null);   // nothing shared yet
+    assert(b.readoutText().startsWith("From Chords: make a progression"));
+
+    const c = load("Generate", "keywise_chords.js");
+    c.state.root = 9; c.state.scale = 1;          // A minor
+    c.state.slots = [1, 6, 3, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    c.state.slotLens[1] = 3;                       // F lasts half a bar
+    c.loaded();                                    // publishes the progression
+
+    const bass = b.transform(b.state, [], { time_selection: { start_time: 0, end_time: 26 } });
+    eq(bass.map((n) => n.pitch + "@" + n.start_time), [
+        "45@0", "41@4", "36@6", "43@10",          // Am F C G (F half a bar)
+        "45@14", "41@18", "36@20", "43@24"]);      // looped to fill the 26 beats
+    eq(b.readoutText(), "A Natural Minor:  Am  F  C  G  Am  F  C  G");
+
+    const m = load("Generate", "keywise_lines.js", ["melody"]);
+    const aMinor = [9, 11, 0, 2, 4, 5, 7];
+    const mel = m.transform(m.state, [], { time_selection: { start_time: 0, end_time: 14 } });
+    assert(mel.length > 4 && mel.every((n) => aMinor.includes(n.pitch % 12) && n.start_time < 14));
+    console.log("from chords ok");
 }
 
 // ─── Keys ──────────────────────────────────────────────────────────────
