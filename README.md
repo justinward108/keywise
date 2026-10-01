@@ -469,6 +469,8 @@ that's what **I, ii, iii, IV, V, vi, vii°** mean.
 
 Found a bug or have an idea? [Open an issue](https://github.com/justinward108/keywise/issues).
 
+Testing a new version in Live? Work through the checklist in [TESTING.md](TESTING.md).
+
 ---
 
 ## Building from source
