@@ -25,6 +25,9 @@ var SLOT_LENGTHS = [0, 0.5, 1, 2, 3, 4, 6, 8, 12, 16];
 var STYLES = ["Block", "Strum Up", "Strum Down", "Arp Up", "Arp Down", "Arp Up-Down", "Arp Random"];
 var RATES = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 1 / 6, 1 / 3];  // 1/64 ... 1/4, 1/16T, 1/8T
 
+// Chord fills, played in the last bar of a phrase. Order must match build_devices.py.
+var FILLS = ["No Fill", "Turnaround", "Dominant", "Sus", "Walk-up", "Push", "Break"];
+
 // Order must match the Presets menu. Degrees are 1-based; 0 = empty slot.
 var PRESETS = [
     null, // "Presets…" placeholder
@@ -60,6 +63,8 @@ var state = {
     style: 0,         // index into STYLES
     rate: 2,          // index into RATES
     voiceLead: 0,     // 1 = pick inversions so chords move smoothly
+    fillType: 0,      // index into FILLS
+    fillEvery: 0,     // index into FILL_EVERY (theory.js)
     slots:    [1, 5, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     // Per-slot chord type: 0 = follow Chord Type, n = CHORD_TYPES[n - 1]
     slotTypes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -107,6 +112,7 @@ function buildChord(st, ctx, degree, inversion, type) {
     }
 
     return {
+        degree: degree,
         name: chordName(rootPc, shape, def),
         roman: romanFor(degIdx, shape),
         upper: upper,                        // the chord voicing
@@ -198,12 +204,10 @@ function chordNotes(st, chord, t, dur, index) {
     return notes;
 }
 
-// Note list in the format live.miditool.out expects.
-function generateNotes(st, ctx) {
+// The progression laid out in time: [{ chord, t, dur, i }], filling the time
+// selection (or written once), plus where it starts and ends.
+function timeline(st, ctx) {
     var chords = progression(st, ctx);
-    var notes = [];
-    if (!chords.length) return notes;
-
     var total = 0;
     chords.forEach(function (c) { total += c.beats; });
 
@@ -212,14 +216,112 @@ function generateNotes(st, ctx) {
     var end = (range && st.fill) ? range.end : start + total;
     if (range && !st.fill) end = Math.min(end, range.end);
 
-    var t = start, i = 0;
-    while (t < end - 1e-6) {
+    var events = [];
+    for (var t = start, i = 0; chords.length && t < end - 1e-6; t += chords[i % chords.length].beats, i++) {
         var chord = chords[i % chords.length];
-        var dur = Math.min(chord.beats, end - t);
-        notes = notes.concat(chordNotes(st, chord, t, dur, i));
-        t += chord.beats;
-        i++;
+        events.push({ chord: chord, t: t, dur: Math.min(chord.beats, end - t), i: i });
     }
+    return { events: events, chords: chords, start: start, end: end, total: total };
+}
+
+// ─── CHORD FILLS ─────────────────────────────────────────────────────────────
+// A fill rewrites the last bar before a phrase end P, leading into the chord
+// at P (or, at the very end, back to chord 1). Fill chords are worked out
+// from that chord's scale degree, so they fit any key and mode:
+//   Turnaround  two quick chords, ii then V7 of the next chord
+//   Dominant    V7 of the next chord for the whole bar
+//   Sus         V sus4, resolving to V
+// The V chords are always major (dominant), even in minor keys, because
+// that's what pulls strongly back home.
+//   Walk-up     two chords stepping up into the next chord
+//   Push        the next chord arrives an 8th note early
+//   Break       two short stabs, then silence
+
+function typeIndex(label) {
+    for (var i = 0; i < CHORD_TYPES.length; i++) if (CHORD_TYPES[i].label === label) return i;
+    return 0;
+}
+
+// Scale degree `steps` away from degree (both 1-based), wrapping round the scale.
+function degreeFrom(st, ctx, degree, steps) {
+    var len = currentScale(st, ctx).intervals.length;
+    return (((degree - 1 + steps) % len) + len) % len + 1;
+}
+
+// Remove [a, b) from the timeline, shortening or splitting chords that cross it.
+function cutEvents(events, a, b) {
+    var out = [];
+    events.forEach(function (e) {
+        var eEnd = e.t + e.dur;
+        if (eEnd <= a + 1e-6 || e.t >= b - 1e-6) { out.push(e); return; }
+        if (e.t < a - 1e-6) out.push({ chord: e.chord, t: e.t, dur: a - e.t, i: e.i });
+        if (eEnd > b + 1e-6) out.push({ chord: e.chord, t: b, dur: eEnd - b, i: e.i });
+    });
+    return out;
+}
+
+function eventAt(events, t) {
+    for (var i = 0; i < events.length; i++) {
+        if (t >= events[i].t - 1e-6 && t < events[i].t + events[i].dur - 1e-6) return events[i];
+    }
+    return null;
+}
+
+// Apply the chosen fill at every phrase end.
+function applyFills(st, ctx, line) {
+    var fill = FILLS[st.fillType];
+    if (fill === "No Fill" || !line.events.length) return line.events;
+    var events = line.events;
+    var points = fillPoints(st.fillEvery, line.start, line.end, line.total, 4);
+
+    points.forEach(function (p, n) {
+        var a = p - 4;                                          // the last bar of the phrase
+        var next = eventAt(events, p);
+        var target = next ? next.chord : line.chords[0];        // the chord the fill leads into
+        var before = eventAt(events, a);
+        var current = before ? before.chord : target;
+        var seed = 1000 + n;                                    // arp seed for fill chords
+        // Add a fill chord `steps` scale degrees from the target, voiced
+        // close to whatever plays just before it.
+        var add = function (steps, type, t, dur) {
+            var c = buildChord(st, ctx, degreeFrom(st, ctx, target.degree, steps), 0, type);
+            var prev = eventAt(events, t - 0.01);
+            c.upper = smoothestVoicing(prev ? prev.chord.upper : current.upper, c.upper, mean(current.upper));
+            events.push({ chord: c, t: t, dur: dur, i: seed });
+        };
+
+        if (fill === "Push") {
+            events = cutEvents(events, p - 0.5, p);
+            events.push({ chord: target, t: p - 0.5, dur: 0.5, i: seed });
+            return;
+        }
+        events = cutEvents(events, a, p);
+        if (fill === "Break") {
+            events.push({ chord: current, t: a, dur: 0.5, i: seed });
+            events.push({ chord: current, t: a + 1, dur: 0.5, i: seed });
+        } else if (fill === "Turnaround") {
+            add(1, st.type, a, 2);                     // ii of the next chord...
+            add(4, typeIndex("dominant 7"), a + 2, 2); // ...then V7
+        } else if (fill === "Dominant") {
+            add(4, typeIndex("dominant 7"), a, 4);     // V7
+        } else if (fill === "Sus") {
+            add(4, typeIndex("sus4"), a, 2);           // V sus4...
+            add(4, typeIndex("dominant"), a + 2, 2);   // ...resolving to V
+        } else if (fill === "Walk-up") {
+            add(-2, st.type, a, 2);                    // two scale steps below...
+            add(-1, st.type, a + 2, 2);                // ...one step below
+        }
+    });
+    return events;
+}
+
+// Note list in the format live.miditool.out expects.
+function generateNotes(st, ctx) {
+    var line = timeline(st, ctx);
+    var notes = [];
+    applyFills(st, ctx, line).sort(function (x, y) { return x.t - y.t; }).forEach(function (e) {
+        notes = notes.concat(chordNotes(st, e.chord, e.t, e.dur, e.i));
+    });
     return notes;
 }
 
@@ -261,6 +363,8 @@ function velocity(v)  { state.velocity = Math.max(1, Math.min(127, v | 0)); chan
 function style(v)     { state.style = v | 0; changed(); }
 function rate(v)      { state.rate = v | 0; changed(); }
 function voicelead(v) { state.voiceLead = v ? 1 : 0; changed(); }
+function filltype(v)  { state.fillType = v | 0; changed(); }
+function fillevery(v) { state.fillEvery = v | 0; changed(); }
 
 function slot(i, v) {
     if (i < 0 || i >= NUM_SLOTS) return;

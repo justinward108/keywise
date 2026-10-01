@@ -205,6 +205,53 @@ function FakeLiveAPI(callback, path) {
     console.log("trk/slot ok");
 }
 
+// ─── Fills ───────────────────────────────────────────────────────────────────
+{
+    const c = load("Generate", "keywise_chords.js");
+    eq(c.fillPoints(0, 0, 32, 16, 4), [16, 32]);            // Each Pass (4-bar progression)
+    eq(c.fillPoints(1, 0, 32, 16, 4), [32]);                // End of Clip
+    eq(c.fillPoints(3, 0, 64, 16, 4), [32, 64]);            // Every 8 Bars
+    const fillNames = (fill, every, end) => {
+        c.state.fillType = c.FILLS.indexOf(fill); c.state.fillEvery = every;
+        const ctx = { time_selection: { start_time: 0, end_time: end } };
+        return c.applyFills(c.state, ctx, c.timeline(c.state, ctx)).sort((a, b) => a.t - b.t)
+            .map((e) => e.chord.name + "@" + e.t);
+    };
+    eq(fillNames("Turnaround", 0, 16), ["C@0", "G@4", "Am@8", "Dm@12", "G7@14"]);
+    eq(fillNames("Dominant", 1, 32), ["C@0", "G@4", "Am@8", "F@12", "C@16", "G@20", "Am@24", "G7@28"]);
+    eq(fillNames("Sus", 0, 16), ["C@0", "G@4", "Am@8", "Gsus4@12", "G@14"]);
+    eq(fillNames("Walk-up", 0, 16), ["C@0", "G@4", "Am@8", "Am@12", "Bdim@14"]);
+    eq(fillNames("Push", 0, 16), ["C@0", "G@4", "Am@8", "F@12", "C@15.5"]);
+    eq(fillNames("Break", 0, 16), ["C@0", "G@4", "Am@8", "F@12", "F@13"]);
+    c.state.root = 9; c.state.scale = 1; c.state.slots = [1, 6, 3, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    eq(fillNames("Turnaround", 0, 16), ["Am@0", "F@4", "C@8", "Bdim@12", "E7@14"]);  // minor: real V7
+    c.state.root = 0; c.state.scale = 0; c.state.slots = [1, 5, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    c.state.fillType = 0; c.state.fillEvery = 0;
+
+    // Bass and Melody over C G Am F (This Clip), fill at the end leading back to C.
+    const bar4 = { time_selection: { start_time: 0, end_time: 16 } };   // the clip's 4 bars
+    const b = load("Generate", "keywise_lines.js", ["bass"]);
+    b.state.source = 1; b.state.pattern = 0;   // This Clip, Held
+    const bassEnd = (fill) => { b.state.fillType = b.BASS_FILLS.indexOf(fill);
+        return b.transform(b.state, chordClip, bar4).filter((n) => n.start_time >= 12).map((n) => n.pitch + "@" + n.start_time); };
+    // Held F (41) shortened to 2 beats, then F G A B (29 31 33 35) walking up into C1 (36).
+    const walk = bassEnd("Walk-up");
+    eq(walk, ["41@12", "29@14", "31@14.5", "33@15", "35@15.5"]);
+    eq(bassEnd("Run Down"), ["41@12", "43@14", "41@14.5", "40@15", "38@15.5"]);   // G F E D down to C
+    eq(bassEnd("Push"), ["41@12", "36@15.5"]);                         // C root an 8th early
+    eq(bassEnd("Drop Out"), ["41@12"]);
+    const m = load("Generate", "keywise_lines.js", ["melody"]);
+    m.state.source = 1;
+    m.state.fillType = m.MELODY_FILLS.indexOf("Run Up");
+    const run = m.transform(m.state, chordClip, bar4).filter((n) => n.start_time >= 14);
+    eq(run.length, 8);
+    assert(run.every((n, i) => i === 0 || n.pitch > run[i - 1].pitch));   // ascending
+    assert(run.every((n) => [0, 2, 4, 5, 7, 9, 11].includes(n.pitch % 12)));
+    m.state.fillType = m.MELODY_FILLS.indexOf("Rest");
+    eq(m.transform(m.state, chordClip, bar4).filter((n) => n.start_time >= 14).length, 0);
+    console.log("fills ok    bass walk-up:", walk.join(" "), "| melody run:", run.map((n) => n.pitch).join(" "));
+}
+
 // ─── Keys ──────────────────────────────────────────────────────────────
 {
     const k = load("MIDI Effect", "keywise_keys.js");

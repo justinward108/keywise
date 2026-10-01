@@ -48,7 +48,11 @@ var CHORD_TYPES = [
     { label: "add11",    semis: [0, 4, 7, 17],      suffix: "add11" },
     { label: "m/maj7",   semis: [0, 3, 7, 11],      suffix: "m(maj7)" },
     { label: "dim7",     semis: [0, 3, 6, 9],       suffix: "dim7" },
-    { label: "aug",      semis: [0, 4, 8],          suffix: "aug" }
+    { label: "aug",      semis: [0, 4, 8],          suffix: "aug" },
+    // Not in any menu: the fills use these so a V chord always pulls home,
+    // even in minor keys (E7 rather than Em7 in A minor).
+    { label: "dominant 7", semis: [0, 4, 7, 10],    suffix: "7" },
+    { label: "dominant",   semis: [0, 4, 7],        suffix: "" }
 ];
 
 var ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
@@ -189,6 +193,25 @@ function selectionRange(ctx) {
     return null;
 }
 
+// ─── FILLS ───────────────────────────────────────────────────────────────────
+// A fill replaces the end of a phrase. Every device has a "Fill" menu (what
+// to play) and an "Every" menu (where): the times at which phrases end.
+// Order must match FILL_EVERY in build_devices.py.
+var FILL_EVERY = ["Each Pass", "End of Clip", "Every 4 Bars", "Every 8 Bars"];
+
+// Phrase ends between start and end (in beats), for an "Every" choice.
+// passLength is how long one pass of the progression lasts. A fill needs
+// `room` beats before its phrase end, so ends too close to the start are skipped.
+function fillPoints(every, start, end, passLength, room) {
+    var step = { "Each Pass": passLength, "Every 4 Bars": 16, "Every 8 Bars": 32 }[FILL_EVERY[every]];
+    var points = [];
+    if (step > 0) {
+        for (var p = start + step; p < end - 1e-6; p += step) points.push(p);
+    }
+    points.push(end);   // the end of the clip always gets one
+    return points.filter(function (p) { return p - room >= start - 1e-6; });
+}
+
 // Read a dictionary arriving from live.miditool.in as a plain JS object.
 function readDict(name) {
     return JSON.parse(new Dict(name).stringify());
@@ -229,6 +252,8 @@ var BASS_PATTERNS = ["Held", "Pulse", "Root-Fifth", "Octaves", "Walking", "Synco
 var BASS_RATES = [1, 1 / 2, 1 / 4, 1 / 3];            // 1/4, 1/8, 1/16, 1/8T in beats
 var MELODY_RHYTHMS = ["Quarters", "8ths", "16ths", "Mixed"];
 var SOURCES = ["Trk/Slot", "This Clip"];
+var BASS_FILLS = ["No Fill", "Walk-up", "Run Down", "Octaves", "Push", "Drop Out"];
+var MELODY_FILLS = ["No Fill", "Run Up", "Run Down", "Pickup", "Long Note", "Rest"];
 
 var state = {
     // bass
@@ -246,6 +271,8 @@ var state = {
     source: 0,         // index into SOURCES
     track: 1,          // Trk/Slot: track number, as shown in Live (1 = first track)
     slot: 1,           // Trk/Slot: clip slot, counting down from the top
+    fillType: 0,       // index into BASS_FILLS / MELODY_FILLS
+    fillEvery: 0,      // index into FILL_EVERY (theory.js)
     velocity: 100
 };
 
@@ -482,6 +509,96 @@ function chordAt(chords, t) {
     return null;
 }
 
+// ─── FILLS ───────────────────────────────────────────────────────────────────
+// A fill replaces the last 2 beats before each phrase end P (see fillPoints
+// in theory.js) and leads into the chord at P, or back to the first chord
+// at the very end.
+//   Bass:   Walk-up / Run Down  four 8ths stepping through the scale into the next root
+//           Octaves             the root bouncing between octaves
+//           Push                the next root arrives an 8th early
+//           Drop Out            silence
+//   Melody: Run Up / Run Down   a 16th-note scale run into the next chord
+//           Pickup              two 8ths leading into the downbeat
+//           Long Note           one held chord tone
+//           Rest                silence
+
+var FILL_BEATS = 2;
+
+// Remove notes starting in [a, b); shorten notes that ring on into it.
+function cutNotes(notes, a, b) {
+    return notes.filter(function (n) {
+        return n.start_time < a - 1e-6 || n.start_time >= b - 1e-6;
+    }).map(function (n) {
+        if (n.start_time < a - 1e-6 && n.start_time + n.duration > a) {
+            n.duration = a - n.start_time;
+        }
+        return n;
+    });
+}
+
+// `count` scale steps from pitch, going in direction dir (1 up, -1 down),
+// returned in the order they are passed: [1 step, 2 steps, ...].
+function scaleSteps(pcs, pitch, dir, count) {
+    var out = [];
+    for (var i = 0; i < count; i++) out.push(pitch = scaleStep(pcs, pitch, dir));
+    return out;
+}
+
+function lineFills(st, notes, chords, scalePcs, info) {
+    var fills = MODE === "melody" ? MELODY_FILLS : BASS_FILLS;
+    var fill = fills[st.fillType];
+    if (!fill || fill === "No Fill" || !chords.length) return notes;
+
+    fillPoints(st.fillEvery, info.start, info.end, info.passLength, FILL_BEATS).forEach(function (p) {
+        var a = p - FILL_BEATS;
+        // The chord the fill leads into: one starting at p (allowing for loose
+        // timing), back to the first chord at the end of the clip, otherwise
+        // whatever is sounding at p.
+        var startsAtP = chords.filter(function (c) { return Math.abs(c.start - p) < TOGETHER; })[0];
+        var next = startsAtP || (p >= info.end - 1e-6 ? chords[0] : chordAt(chords, p)) || chords[0];
+        var current = chordAt(chords, a) || next;
+        var add = function (pitch, t, dur) {
+            if (pitch >= 0 && pitch <= 127) {
+                notes.push({ pitch: pitch, start_time: t, duration: dur, velocity: st.velocity, mute: 0 });
+            }
+        };
+
+        if (MODE !== "melody") {
+            var base = (st.bassOctave + 2) * 12;
+            var nextRoot = base + next.root, root = base + current.root;
+            var gate = st.gate / 100;
+            if (fill === "Push") {
+                notes = cutNotes(notes, p - 0.5, p);
+                add(nextRoot, p - 0.5, 0.5 * gate);
+                return;
+            }
+            notes = cutNotes(notes, a, p);
+            var run = fill === "Walk-up" ? scaleSteps(scalePcs, nextRoot, -1, 4).reverse() :
+                      fill === "Run Down" ? scaleSteps(scalePcs, nextRoot, 1, 4).reverse() :
+                      fill === "Octaves" ? [root + 12, root, root + 12, root] : [];
+            run.forEach(function (pitch, k) { add(pitch, a + k * 0.5, 0.5 * gate); });
+            return;
+        }
+
+        // Melody: aim for the chord tone of the next chord nearest the last note played.
+        var last = null;
+        notes.forEach(function (n) { if (n.start_time < a - 1e-6) last = n; });
+        var from = last ? last.pitch : (st.melodyOctave + 2) * 12 + 4;
+        var target = nearestIn(next.pcs, from);
+        notes = cutNotes(notes, a, p);
+        if (fill === "Run Up" || fill === "Run Down") {
+            scaleSteps(scalePcs, target, fill === "Run Up" ? -1 : 1, 8).reverse()
+                .forEach(function (pitch, k) { add(pitch, a + k * 0.25, 0.24); });
+        } else if (fill === "Pickup") {
+            scaleSteps(scalePcs, target, -1, 2).reverse()
+                .forEach(function (pitch, k) { add(pitch, a + 1 + k * 0.5, 0.45); });
+        } else if (fill === "Long Note") {
+            add(nearestIn(current.pcs, from), a, FILL_BEATS * 0.95);
+        }
+    });
+    return notes.sort(function (x, y) { return x.start_time - y.start_time; });
+}
+
 // ─── BOTH ────────────────────────────────────────────────────────────────────
 
 var lastChords = [];
@@ -528,11 +645,13 @@ function tileNotes(src, ctx) {
 // Returns the new notes, or null when the chosen clip can't be read.
 function transform(st, notes, ctx) {
     lastError = ""; lastSource = "";
+    var passLength = 0;
     if (SOURCES[st.source] === "Trk/Slot") {
         var src = readSessionClip(st.track, st.slot);
         if (src.error) { lastError = src.error; lastChords = []; return null; }
         notes = tileNotes(src, ctx);
         lastSource = src.label;
+        passLength = src.length;
     }
     var chords = detectChords(notes);
     lastChords = chords;
@@ -541,7 +660,18 @@ function transform(st, notes, ctx) {
         return null;
     }
     var scalePcs = scaleFor(chords, ctx);
-    return MODE === "melody" ? melodyLine(st, chords, scalePcs) : bassLine(st, chords, scalePcs);
+    var line = MODE === "melody" ? melodyLine(st, chords, scalePcs) : bassLine(st, chords, scalePcs);
+
+    // Where phrases end, for fills: the time selection (or the chords' span),
+    // and one pass = the chord clip's loop (Trk/Slot) or the whole clip.
+    var range = selectionRange(ctx) || { start: chords[0].start, end: chords[chords.length - 1].end };
+    var info = { start: range.start, end: range.end, passLength: passLength || (range.end - range.start) };
+    // Keep everything inside the selection (chords can ring a little past it).
+    line = line.filter(function (n) { return n.start_time < range.end - 1e-6; }).map(function (n) {
+        n.duration = Math.min(n.duration, range.end - n.start_time);
+        return n;
+    });
+    return lineFills(st, line, chords, scalePcs, info);
 }
 
 function readoutText() {
@@ -582,6 +712,8 @@ function velocity(v)  { state.velocity = Math.max(1, Math.min(127, v | 0)); chan
 function source(v)    { state.source = v | 0; lastError = ""; outlet(2, "readout", "set", readoutText()); changed(); }
 function track(v)     { state.track = Math.max(1, v | 0); changed(); }
 function slot(v)      { state.slot = Math.max(1, v | 0); changed(); }
+function filltype(v)  { state.fillType = v | 0; changed(); }
+function fillevery(v) { state.fillEvery = v | 0; changed(); }
 
 function loaded() {
     ready = 1;

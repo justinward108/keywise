@@ -28,6 +28,18 @@ SCALES = ["Major", "Natural Minor", "Harmonic Minor", "Melodic Minor", "Dorian",
 CHORD_TYPES = ["Triad (3)", "7th (4)", "9th (5)", "11th (6)", "13th (7)", "5th",
                "add9", "sus2", "sus4", "maj9", "min9", "9 (dom)", "add11", "m/maj7", "dim7", "aug"]
 
+# Fills: where they go (must match FILL_EVERY in src/theory.js).
+FILL_EVERY = ["Each Pass", "End of Clip", "Every 4 Bars", "Every 8 Bars"]
+FILL_EVERY_HELP = ("Where fills go. Each Pass: every time the progression comes round. End of Clip: only "
+                   "at the end. Every 4 / 8 Bars: at the end of each 4- or 8-bar phrase.")
+
+
+def fill_row(ui, fills, y, help_text):
+    """Fill menu + Every menu, shared by Chords, Bass and Melody."""
+    ui.menu("Fill Type", "Fill", fills, 0, [0, y, 76, 16], "filltype", help_text)
+    ui.menu("Fill Every", "Every", FILL_EVERY, 0, [78, y, 74, 16], "fillevery", FILL_EVERY_HELP)
+
+
 # MIDI Tools live in a panel roughly this size.
 TOOL_W, TOOL_H = 152, 146
 
@@ -66,6 +78,7 @@ SLOT_TYPES = ["Type=", "Triad", "7th", "9th", "11th", "13th", "5th", "add9", "su
               "maj9", "min9", "9", "add11", "mM7", "dim7", "aug"]
 STYLES = ["Block", "Strum Up", "Strum Down", "Arp Up", "Arp Down", "Arp Up-Down", "Arp Random"]
 RATES = ["1/64", "1/32", "1/16", "1/8", "1/4", "1/16T", "1/8T"]
+CHORD_FILLS = ["No Fill", "Turnaround", "Dominant", "Sus", "Walk-up", "Push", "Break"]  # src/chords.js FILLS
 PRESETS = ["Presets…", "I V vi IV", "I vi IV V", "vi IV I V", "ii V I", "vi ii V I",
            "I IV V IV", "i VI III VII", "i iv v", "i VII VI V", "Canon (8)",
            "12-bar Blues", "Pop Song (16)"]
@@ -149,6 +162,10 @@ def build_chords():
     ui.toggle("Voice Leading", "Voice Leading", 0, [0, 37, 100, 16], "voicelead",
               "Picks inversions automatically so each chord moves as little as possible from the last.")
     ui.numbox("Velocity", "Vel", 1, 127, 100, [102, 37, 50, 16], "velocity", "Note velocity.", "Vel %d")
+    fill_row(ui, CHORD_FILLS, 56,
+             "A fill for the last bar of each phrase, leading into the next chord. Turnaround: ii then V7. "
+             "Dominant: V7. Sus: Vsus4 then V. Walk-up: two chords stepping up. Push: the next chord an 8th early. "
+             "Break: two stabs, then silence.")
 
     readout = ui.readout([0, 116, TOOL_W, 30])
     p.connect(feedback, readout, 0, 0)
@@ -164,6 +181,8 @@ BASS_PATTERNS = ["Held", "Pulse", "Root-Fifth", "Octaves", "Walking", "Syncopate
 BASS_RATES = ["1/4", "1/8", "1/16", "1/8T"]
 MELODY_RHYTHMS = ["Quarters", "8ths", "16ths", "Mixed"]
 SOURCES = ["Trk/Slot", "This Clip"]
+BASS_FILLS = ["No Fill", "Walk-up", "Run Down", "Octaves", "Push", "Drop Out"]      # src/lines.js
+MELODY_FILLS = ["No Fill", "Run Up", "Run Down", "Pickup", "Long Note", "Rest"]     # src/lines.js
 SOURCE_HELP = ("Trk/Slot: follow the chords in a Session View clip, picked with the Trk and Slot numbers, "
                "looped to fill this clip; start from an empty clip. "
                "This Clip: use the chords already in this clip (they get replaced).")
@@ -198,7 +217,10 @@ def build_lines(mode):
                   "How long each note lasts, as % of its step. Lower = punchier.", "Gate %d")
         ui.numbox("Velocity", "Vel", 1, 127, 100, [100, 19, 52, 16], "velocity", "Note velocity.", "Vel %d")
         source_row(ui, 38)
-        top = 59
+        fill_row(ui, BASS_FILLS, 57,
+                 "A fill for the last 2 beats of each phrase. Walk-up / Run Down: four 8ths stepping into the "
+                 "next root. Octaves: octave bounce. Push: the next root an 8th early. Drop Out: silence.")
+        top = 78
         description = "Writes a bassline that follows the chords in any clip."
     else:
         ui.menu("Rhythm", "Rhythm", MELODY_RHYTHMS, 1, [0, 0, 76, 16], "rhythm",
@@ -213,10 +235,13 @@ def build_lines(mode):
         ui.toggle("Repeat", "Repeat Motif", 1, [0, 38, 100, 16], "repeat",
                   "On: every bar reuses the same rhythm, so the melody has a hook. Off: a new rhythm each bar.")
         source_row(ui, 57)
-        top = 78
+        fill_row(ui, MELODY_FILLS, 76,
+                 "A fill for the last 2 beats of each phrase. Run Up / Run Down: a 16th-note scale run into the "
+                 "next chord. Pickup: two notes leading into the downbeat. Long Note: hold a chord tone. Rest: silence.")
+        top = 97
         description = "Writes a melody that follows the chords in any clip."
 
-    readout = ui.readout([0, top, TOOL_W, TOOL_H - top], linecount=6)
+    readout = ui.readout([0, top, TOOL_W, TOOL_H - top], linecount=(TOOL_H - top) // 12)
     p.connect(feedback, readout, 0, 0)
     p.add("live.line", [0, 146, TOOL_W, 5.0], numinlets=1, numoutlets=0)
     return p.to_json("generator", TOOL_W, TOOL_H, description)

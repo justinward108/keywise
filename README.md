@@ -20,7 +20,7 @@ your bass or lead track, pick Keywise Bass or Keywise Melody, point it at the ch
 any number of songs and sections in one Live set.
 
 **Contents:** [Requirements](#requirements) · [Install](#install) · [Quick start](#quick-start) ·
-[Chords](#keywise-chords) · [Bass](#keywise-bass) · [Melody](#keywise-melody) · [Keys](#keywise-keys) ·
+[Chords](#keywise-chords) · [Fills](#fills) · [Bass](#keywise-bass) · [Melody](#keywise-melody) · [Keys](#keywise-keys) ·
 [How the chord numbers work](#how-the-chord-numbers-work) · [Troubleshooting](#troubleshooting) ·
 [Building from source](#building-from-source) · [License](#license)
 
@@ -200,6 +200,38 @@ If all 16 slots are used, or no chords are filled in, it does nothing and says w
 | **Rate** | 1/64, 1/32, 1/16, 1/8, 1/4, 1/16T, 1/8T | The gap between strummed notes, or the length of each arpeggio step. Try 1/64 for strums and 1/16 for arpeggios. Default: 1/16. |
 | **Voice Leading** | on / off | Chooses each chord's inversion automatically so the notes move as little as possible from the previous chord: smoother, more "pianist" changes. The first chord uses **Inv**; chords with their own inversion keep it. |
 | **Vel** | 1 – 127 | Note velocity. Default: 100. |
+| **Fill** | No Fill, Turnaround, Dominant, Sus, Walk-up, Push, Break | A chord fill in the last bar of each phrase. See [Fills](#fills). |
+| **Every** | Each Pass, End of Clip, Every 4 Bars, Every 8 Bars | Where the fills go. |
+
+### Fills
+
+A fill changes the end of a phrase so it leads back in, like a drummer's fill but for chords. Pick
+one in the **Fill** menu (Feel tab) and choose where it goes with **Every**:
+
+| Every | Fills go… |
+|---|---|
+| **Each Pass** | at the end of each time round the progression |
+| **End of Clip** | only at the very end of the clip |
+| **Every 4 Bars** / **Every 8 Bars** | at the end of each 4- or 8-bar phrase |
+
+Each fill replaces the **last bar** before the phrase end and leads into the chord that comes next
+(or, at the end of the clip, back to chord 1). In C major, going back to C:
+
+| Fill | What it plays | Example |
+|---|---|---|
+| **Turnaround** | Two quick chords, ii then V7 of the next chord | … Dm – G7 → C |
+| **Dominant** | V7 of the next chord for the whole bar | … G7 → C |
+| **Sus** | V with a suspended 4th, resolving to V | … Gsus4 – G → C |
+| **Walk-up** | Two chords stepping up into the next chord | … Am – B° → C |
+| **Push** | The next chord arrives an 8th note early | C hits on the "and" of beat 4 |
+| **Break** | Two short stabs, then silence | stab on beats 1 and 2, then rest |
+
+Fills are worked out from the next chord's scale degree, so they fit any key and mode. The V
+chords are always major, even in minor keys (E7 → Am in A minor), because that's what pulls home.
+Your chord slots aren't changed: switch the Fill menu to compare, or back to **No Fill**.
+
+Keywise Bass and Keywise Melody have their own fills (below); turn them on together for a full-band
+fill.
 
 ### Chord types
 
@@ -281,6 +313,8 @@ The readout shows what's being followed, e.g. `Track 1 "Chords", slot 2: Am F C 
 | **From** | Trk/Slot, This Clip | Where the chords come from (see above). Default: Trk/Slot. |
 | **Trk** | 1 – 999 | Trk/Slot: track number of the chord clip (1 = first track on the left). |
 | **Slot** | 1 – 999 | Trk/Slot: clip slot of the chord clip in Session View (1 = top slot). |
+| **Fill** | No Fill, Walk-up, Run Down, Octaves, Push, Drop Out | A bass fill in the last 2 beats of each phrase (see below). |
+| **Every** | Each Pass, End of Clip, Every 4 Bars, Every 8 Bars | Where the fills go. *Each Pass* = each time the chord clip's loop comes round. |
 
 | Pattern | What you get |
 |---|---|
@@ -291,6 +325,16 @@ The readout shows what's being followed, e.g. `Track 1 "Chords", slot 2: Am F C 
 | **Walking** | One note per step through chord and scale notes, sliding a half step into the next chord's root. Works best with Rate 1/4. |
 | **Syncopated** | A 3 + 3 + 2 rhythm (the "tresillo") on root, root, fifth. |
 | **Push** | Holds the root, then hits the next chord's root one step early. |
+
+**Bass fills** replace the last 2 beats before each phrase end:
+
+| Fill | What it plays |
+|---|---|
+| **Walk-up** | Four 8th notes stepping up the scale into the next chord's root |
+| **Run Down** | Four 8th notes stepping down the scale into the next root |
+| **Octaves** | The root bouncing between octaves in 8th notes |
+| **Push** | The next root arrives an 8th note early |
+| **Drop Out** | Silence, so the next downbeat hits harder |
 
 ---
 
@@ -320,6 +364,17 @@ melody always fits. Treat it as a sketch: keep what you like and edit the rest.
 | **Repeat Motif** | on / off | On (default): every bar reuses the same rhythm, so the melody has a hook. Off: a new rhythm each bar. |
 | **From** | Trk/Slot, This Clip | Where the chords come from. Default: Trk/Slot. |
 | **Trk**, **Slot** | 1 – 999 | Trk/Slot: track and slot number of the chord clip, as for Keywise Bass. |
+| **Fill** | No Fill, Run Up, Run Down, Pickup, Long Note, Rest | A melody fill in the last 2 beats of each phrase (see below). |
+| **Every** | Each Pass, End of Clip, Every 4 Bars, Every 8 Bars | Where the fills go. |
+
+**Melody fills** replace the last 2 beats before each phrase end:
+
+| Fill | What it plays |
+|---|---|
+| **Run Up** / **Run Down** | A quick 16th-note scale run into a note of the next chord |
+| **Pickup** | Two notes leading into the next downbeat |
+| **Long Note** | One held note from the current chord |
+| **Rest** | Silence: a breath before the next phrase |
 
 ### Notes for Bass and Melody
 

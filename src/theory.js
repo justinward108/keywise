@@ -46,7 +46,11 @@ var CHORD_TYPES = [
     { label: "add11",    semis: [0, 4, 7, 17],      suffix: "add11" },
     { label: "m/maj7",   semis: [0, 3, 7, 11],      suffix: "m(maj7)" },
     { label: "dim7",     semis: [0, 3, 6, 9],       suffix: "dim7" },
-    { label: "aug",      semis: [0, 4, 8],          suffix: "aug" }
+    { label: "aug",      semis: [0, 4, 8],          suffix: "aug" },
+    // Not in any menu: the fills use these so a V chord always pulls home,
+    // even in minor keys (E7 rather than Em7 in A minor).
+    { label: "dominant 7", semis: [0, 4, 7, 10],    suffix: "7" },
+    { label: "dominant",   semis: [0, 4, 7],        suffix: "" }
 ];
 
 var ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
@@ -185,6 +189,25 @@ function selectionRange(ctx) {
         return { start: sel.start_time, end: sel.end_time };
     }
     return null;
+}
+
+// ─── FILLS ───────────────────────────────────────────────────────────────────
+// A fill replaces the end of a phrase. Every device has a "Fill" menu (what
+// to play) and an "Every" menu (where): the times at which phrases end.
+// Order must match FILL_EVERY in build_devices.py.
+var FILL_EVERY = ["Each Pass", "End of Clip", "Every 4 Bars", "Every 8 Bars"];
+
+// Phrase ends between start and end (in beats), for an "Every" choice.
+// passLength is how long one pass of the progression lasts. A fill needs
+// `room` beats before its phrase end, so ends too close to the start are skipped.
+function fillPoints(every, start, end, passLength, room) {
+    var step = { "Each Pass": passLength, "Every 4 Bars": 16, "Every 8 Bars": 32 }[FILL_EVERY[every]];
+    var points = [];
+    if (step > 0) {
+        for (var p = start + step; p < end - 1e-6; p += step) points.push(p);
+    }
+    points.push(end);   // the end of the clip always gets one
+    return points.filter(function (p) { return p - room >= start - 1e-6; });
 }
 
 // Read a dictionary arriving from live.miditool.in as a plain JS object.
