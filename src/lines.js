@@ -2,9 +2,9 @@
 //
 // Writes a bassline or a melody that follows a chord progression. The chords
 // come from the "From" menu:
-//   Prog A-H:   a progression saved by Keywise Chords (see BANK_NAMES in
-//               theory.js), looped to fill this clip's time selection.
-//               Use an empty clip.
+//   Trk/Slot:   a Session View clip, picked by track number and slot number
+//               (counting down from the top). Its chords are looped to fill
+//               this clip's time selection. Use an empty clip.
 //   This Clip:  the chords already in this clip, which get replaced.
 // The same script runs both devices; the patch passes "bass" or "melody":
 //   [js keywise_lines.js bass]
@@ -25,8 +25,7 @@ var MODE = (typeof jsarguments !== "undefined" && jsarguments[1]) ? String(jsarg
 var BASS_PATTERNS = ["Held", "Pulse", "Root-Fifth", "Octaves", "Walking", "Syncopated", "Push"];
 var BASS_RATES = [1, 1 / 2, 1 / 4, 1 / 3];            // 1/4, 1/8, 1/16, 1/8T in beats
 var MELODY_RHYTHMS = ["Quarters", "8ths", "16ths", "Mixed"];
-// "Prog A" ... "Prog H", then "This Clip". Order must match build_devices.py.
-var SOURCES = BANK_NAMES.map(function (b) { return "Prog " + b; }).concat(["This Clip"]);
+var SOURCES = ["Trk/Slot", "This Clip"];
 
 var state = {
     // bass
@@ -42,6 +41,8 @@ var state = {
     repeat: 1,         // reuse one bar of rhythm so the melody has a motif
     // both
     source: 0,         // index into SOURCES
+    track: 1,          // Trk/Slot: track number, as shown in Live (1 = first track)
+    slot: 1,           // Trk/Slot: clip slot, counting down from the top
     velocity: 100
 };
 
@@ -49,11 +50,11 @@ var context = null;
 var ready = 0;
 
 // ─── CHORD DETECTION ─────────────────────────────────────────────────────────
-// Notes that start within 1/8 beat of each other belong to the same chord
+// Notes that start within 1/4 beat of each other belong to the same chord
 // (so strummed chords still count as one). Each chord lasts until the next
 // one starts. Works best on block or strummed chords, not arpeggios.
 
-var TOGETHER = 0.125;
+var TOGETHER = 0.25;
 
 function detectChords(notes) {
     var list = notes.filter(function (n) { return !n.mute; })
@@ -111,15 +112,13 @@ function chordRoot(pitches) {
     return { pcs: pcs, root: best, third: third, fifth: fifth, name: NOTES[best] + (suffix || "") };
 }
 
-// The scale to use for passing notes: the clip's Scale if it has one, then
-// the scale Keywise Chords used (Prog A-H), otherwise every note that
-// appears in the chords.
-function scaleFor(chords, ctx, sharedScale) {
+// The scale to use for passing notes: the clip's Scale if it has one,
+// otherwise every note that appears in the chords.
+function scaleFor(chords, ctx) {
     if (ctx && ctx.scale && ctx.scale.scale_intervals && ctx.scale.scale_intervals.length) {
         var r = ctx.scale.root_note || 0;
         return ctx.scale.scale_intervals.map(function (iv) { return (r + iv) % 12; });
     }
-    if (sharedScale && sharedScale.length) return sharedScale;
     var pcs = [];
     chords.forEach(function (c) {
         c.pcs.forEach(function (pc) { if (pcs.indexOf(pc) < 0) pcs.push(pc); });
@@ -283,73 +282,86 @@ function chordAt(chords, t) {
 // ─── BOTH ────────────────────────────────────────────────────────────────────
 
 var lastChords = [];
-var lastKey = "";
+var lastSource = "";   // e.g. 'Track 1 "Chords", slot 2'
+var lastError = "";
 
-// The progression saved under Prog <letter> by Keywise Chords, or null if
-// that letter is empty.
-function readShared(letter) {
-    var shared = readBanks()[letter];
-    return (shared && shared.cycle && shared.cycle.length) ? shared : null;
+// Read the MIDI notes of a Session View clip through the Live API.
+// track and slot count from 1, as shown in Live. Returns
+// { notes, start, length, label } or { error }.
+function readSessionClip(track, slot) {
+    if (typeof LiveAPI === "undefined") return { error: "Can't read other clips here." };
+    var noop = function () {};
+    var trackApi = new LiveAPI(noop, "live_set tracks " + (track - 1));
+    if (Number(trackApi.id) === 0) return { error: "There is no track " + track + "." };
+    var label = "Track " + track + " \"" + [].concat(trackApi.get("name")).join(" ") + "\", slot " + slot;
+
+    var clip = new LiveAPI(noop, "live_set tracks " + (track - 1) + " clip_slots " + (slot - 1) + " clip");
+    if (Number(clip.id) === 0) return { error: label + " is empty." };
+    if (Number([].concat(clip.get("is_midi_clip"))[0]) !== 1) return { error: label + " isn't a MIDI clip." };
+
+    var start = Number([].concat(clip.get("loop_start"))[0]);
+    var length = Number([].concat(clip.get("loop_end"))[0]) - start;
+    var raw = clip.call("get_notes_extended", 0, 128, start, length);
+    var data = JSON.parse(typeof raw === "string" ? raw : [].concat(raw).join(" "));
+    return { notes: data.notes || [], start: start, length: length, label: label };
 }
 
-// Lay the shared progression out as block-chord notes, looped to fill the
-// time selection (or played once if there isn't one).
-function sharedNotes(shared, ctx) {
-    var total = 0;
-    shared.cycle.forEach(function (c) { total += c.beats; });
-    var range = selectionRange(ctx) || { start: 0, end: total };
-    var notes = [], t = range.start, i = 0;
-    while (t < range.end - 1e-6 && total > 0) {
-        var c = shared.cycle[i % shared.cycle.length];
-        var dur = Math.min(c.beats, range.end - t);
-        c.pitches.forEach(function (p) {
-            notes.push({ pitch: p, start_time: t, duration: dur, velocity: 100, mute: 0 });
+// Lay a clip's notes (one loop of it) out again and again to fill this
+// clip's time selection (or once, if there isn't one).
+function tileNotes(src, ctx) {
+    var range = selectionRange(ctx) || { start: 0, end: src.length };
+    var notes = [];
+    for (var offset = range.start; offset < range.end - 1e-6 && src.length > 0; offset += src.length) {
+        src.notes.forEach(function (n) {
+            var t = offset + (n.start_time - src.start);
+            if (t < offset - 1e-6 || t >= range.end - 1e-6) return;
+            notes.push({ pitch: n.pitch, start_time: t, duration: Math.min(n.duration, range.end - t),
+                         velocity: n.velocity, mute: n.mute || 0 });
         });
-        t += c.beats;
-        i++;
     }
     return notes;
 }
 
-// Returns the new notes, or null when the chosen Prog letter is empty.
+// Returns the new notes, or null when the chosen clip can't be read.
 function transform(st, notes, ctx) {
-    var sharedScale = null;
-    if (st.source < BANK_NAMES.length) {
-        var shared = readShared(BANK_NAMES[st.source]);
-        if (!shared) { lastChords = []; return null; }
-        notes = sharedNotes(shared, ctx);
-        sharedScale = shared.scale;
-        lastKey = shared.key || "";
-    } else {
-        lastKey = "";
+    lastError = ""; lastSource = "";
+    if (SOURCES[st.source] === "Trk/Slot") {
+        var src = readSessionClip(st.track, st.slot);
+        if (src.error) { lastError = src.error; lastChords = []; return null; }
+        notes = tileNotes(src, ctx);
+        lastSource = src.label;
     }
     var chords = detectChords(notes);
     lastChords = chords;
-    var scalePcs = scaleFor(chords, ctx, sharedScale);
+    if (!chords.length) {
+        lastError = (lastSource || "This clip") + " has no chords in it.";
+        return null;
+    }
+    var scalePcs = scaleFor(chords, ctx);
     return MODE === "melody" ? melodyLine(st, chords, scalePcs) : bassLine(st, chords, scalePcs);
 }
 
 function readoutText() {
     var part = MODE === "melody" ? "a melody" : "a bassline";
+    if (lastError) return lastError + " Pick another Trk/Slot, or use This Clip.";
     if (!lastChords.length) {
-        return state.source < BANK_NAMES.length ?
-            SOURCES[state.source] + " is empty. In Keywise Chords, set Prog to " + BANK_NAMES[state.source] +
-            " and make a progression, then press Generate here to write " + part + " over it." :
+        return SOURCES[state.source] === "Trk/Slot" ?
+            "Set Trk and Slot to your chord clip (Session View), then press Generate in an empty clip to write " + part + "." :
             "This Clip: open a clip of chords and press Generate to turn them into " + part + ".";
     }
-    return (lastKey ? SOURCES[state.source] + " · " + lastKey + ":  " : "Chords:  ") +
-        lastChords.map(function (c) { return c.name; }).join("  ");
+    return (lastSource || "This clip") + ":  " + lastChords.map(function (c) { return c.name; }).join("  ");
 }
 
 // ─── MAX GLUE ────────────────────────────────────────────────────────────────
 
+var generated = 0;   // 1 after the first Generate in this session
 var reapply = (typeof Task !== "undefined") ?
     new Task(function () { outlet(1, "bang"); }) : null;
 
 function changed() {
     // Only re-apply once the user has pressed Generate at least once, so
     // moving a control never rewrites a clip by surprise.
-    if (ready && lastChords.length && reapply) {
+    if (ready && generated && reapply) {
         reapply.cancel();
         reapply.schedule(30);
     }
@@ -364,7 +376,9 @@ function density(v)   { state.density = Math.max(0, Math.min(100, v | 0)); chang
 function variation(v) { state.variation = v | 0; changed(); }
 function repeat(v)    { state.repeat = v ? 1 : 0; changed(); }
 function velocity(v)  { state.velocity = Math.max(1, Math.min(127, v | 0)); changed(); }
-function source(v)    { state.source = v | 0; outlet(2, "readout", "set", readoutText()); changed(); }
+function source(v)    { state.source = v | 0; lastError = ""; outlet(2, "readout", "set", readoutText()); changed(); }
+function track(v)     { state.track = Math.max(1, v | 0); changed(); }
+function slot(v)      { state.slot = Math.max(1, v | 0); changed(); }
 
 function loaded() {
     ready = 1;
@@ -374,8 +388,9 @@ function loaded() {
 function dictionary(name) {
     var data = readDict(name);
     if (inlet === 1) { context = data; return; }
+    generated = 1;
     var out = transform(state, data.notes || [], context);
     outlet(2, "readout", "set", readoutText());
-    // Nothing to read yet: hand the clip's notes back unchanged rather than erasing them.
+    // Nothing to follow: hand the clip's notes back unchanged rather than erasing them.
     sendNotes("keywise_" + MODE + "_out", out === null ? (data.notes || []) : out);
 }

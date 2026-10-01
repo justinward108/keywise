@@ -70,7 +70,6 @@ PRESETS = ["Presets…", "I V vi IV", "I vi IV V", "vi IV I V", "ii V I", "vi ii
            "I IV V IV", "i VI III VII", "i iv v", "i VII VI V", "Canon (8)",
            "12-bar Blues", "Pop Song (16)"]
 NUM_SLOTS = 16
-PROG_NAMES = [f"Prog {b}" for b in "ABCDEFGH"]  # must match BANK_NAMES in src/theory.js
 DEFAULT_SLOTS = [1, 5, 6, 4] + [0] * 12
 
 
@@ -79,14 +78,9 @@ def build_chords():
     js = midi_tool_core(p, "js keywise_chords.js")
     # js -> "slot 3 5", "slottype 3 0", ... -> the matching slot menu (presets)
     slot_fields = ["slot", "slottype", "slotlen", "slotinv"]
-    feedback = p.obj("route readout " + " ".join(slot_fields) + " preset script", 200, 420,
-                     inlets=1, outlets=len(slot_fields) + 4, width=300)
+    feedback = p.obj("route readout " + " ".join(slot_fields) + " preset", 200, 420,
+                     inlets=1, outlets=len(slot_fields) + 3, width=280)
     p.connect(js, feedback, 2, 0)
-    # "script send <control> <value>": js sets a control when a stored Prog is loaded
-    to_patcher = p.obj("prepend script", 520, 420, width=90)
-    controls_patcher = p.obj("thispatcher", 520, 450, inlets=1, outlets=2)
-    p.connect(feedback, to_patcher, len(slot_fields) + 2, 0)
-    p.connect(to_patcher, controls_patcher, 0, 0)
     routers = {}
     for n, field in enumerate(slot_fields):
         routers[field] = p.obj("route " + " ".join(map(str, range(NUM_SLOTS))), 200, 450 + n * 30,
@@ -116,10 +110,7 @@ def build_chords():
     preset = ui.menu("Preset", "Preset", PRESETS, 0, [100, 75, 52, 16], "preset",
                      "Load a common progression into the chord slots (up to 16 chords).")
     p.connect(feedback, preset, len(slot_fields) + 1, 0)
-    ui.menu("Prog", "Prog", PROG_NAMES, 0, [0, 94, 46, 16], "bank",
-            "Which progression you are editing, A to H. Each letter remembers its own chords and settings; "
-            "Keywise Bass and Melody pick one with their From menu. An empty letter starts as a copy of the current one.")
-    ui.button("Duplicate", "Duplicate Chords", [48, 94, TOOL_W - 48, 16], "duplicate",
+    ui.button("Duplicate", "Duplicate Chords", [0, 94, TOOL_W, 16], "duplicate",
               "Copies your chords (with their type, length and inversion) into the next empty slots: "
               "4 chords become 8, press again for 16. Then change the copies.")
 
@@ -172,9 +163,21 @@ def build_chords():
 BASS_PATTERNS = ["Held", "Pulse", "Root-Fifth", "Octaves", "Walking", "Syncopated", "Push"]
 BASS_RATES = ["1/4", "1/8", "1/16", "1/8T"]
 MELODY_RHYTHMS = ["Quarters", "8ths", "16ths", "Mixed"]
-SOURCES = PROG_NAMES + ["This Clip"]
-SOURCE_HELP = ("Prog A-H: follow that progression from Keywise Chords, looped to fill this clip; "
-               "start from an empty clip. This Clip: use the chords already in this clip (they get replaced).")
+SOURCES = ["Trk/Slot", "This Clip"]
+SOURCE_HELP = ("Trk/Slot: follow the chords in a Session View clip, picked with the Trk and Slot numbers, "
+               "looped to fill this clip; start from an empty clip. "
+               "This Clip: use the chords already in this clip (they get replaced).")
+
+
+def source_row(ui, y):
+    """From menu + Trk + Slot: which clip's chords to follow."""
+    ui.menu("Source", "From", SOURCES, 0, [0, y, 56, 16], "source", SOURCE_HELP)
+    ui.numbox("Track", "Trk", 1, 999, 1, [58, y, 46, 16], "track",
+              "Trk/Slot: the track number of the chord clip, counting tracks from the left (1 = first track).",
+              "Trk %d")
+    ui.numbox("Slot", "Slot", 1, 999, 1, [106, y, 46, 16], "slot",
+              "Trk/Slot: the clip slot of the chord clip in Session View, counting down from the top (1 = top slot).",
+              "Slot %d")
 
 
 def build_lines(mode):
@@ -194,9 +197,9 @@ def build_lines(mode):
         ui.numbox("Gate", "Gate", 10, 100, 90, [50, 19, 48, 16], "gate",
                   "How long each note lasts, as % of its step. Lower = punchier.", "Gate %d")
         ui.numbox("Velocity", "Vel", 1, 127, 100, [100, 19, 52, 16], "velocity", "Note velocity.", "Vel %d")
-        ui.menu("Source", "From", SOURCES, 0, [0, 38, 100, 16], "source", SOURCE_HELP)
+        source_row(ui, 38)
         top = 59
-        description = "Writes a bassline that follows your Keywise Chords progression or a clip's chords."
+        description = "Writes a bassline that follows the chords in any clip."
     else:
         ui.menu("Rhythm", "Rhythm", MELODY_RHYTHMS, 1, [0, 0, 76, 16], "rhythm",
                 "Note values of the melody. Mixed varies them beat by beat.")
@@ -207,11 +210,11 @@ def build_lines(mode):
         ui.numbox("Variation", "Var", 1, 99, 1, [50, 19, 48, 16], "variation",
                   "Change this for a different melody over the same chords.", "Var %d")
         ui.numbox("Velocity", "Vel", 1, 127, 100, [100, 19, 52, 16], "velocity", "Note velocity.", "Vel %d")
-        ui.toggle("Repeat", "Repeat Motif", 1, [0, 38, 74, 16], "repeat",
+        ui.toggle("Repeat", "Repeat Motif", 1, [0, 38, 100, 16], "repeat",
                   "On: every bar reuses the same rhythm, so the melody has a hook. Off: a new rhythm each bar.")
-        ui.menu("Source", "From", SOURCES, 0, [76, 38, 76, 16], "source", SOURCE_HELP)
-        top = 59
-        description = "Writes a melody that follows your Keywise Chords progression or a clip's chords."
+        source_row(ui, 57)
+        top = 78
+        description = "Writes a melody that follows the chords in any clip."
 
     readout = ui.readout([0, top, TOOL_W, TOOL_H - top], linecount=6)
     p.connect(feedback, readout, 0, 0)

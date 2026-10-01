@@ -102,7 +102,7 @@ const chordClip = [];
 
 {
     const b = load("Generate", "keywise_lines.js", ["bass"]);
-    b.state.source = 8;   // This Clip
+    b.state.source = 1;   // This Clip
     const chords = b.detectChords(chordClip);
     eq(chords.map((c) => c.name), ["C", "G", "Am", "F"]);
     const roots = (pattern, rate) => {
@@ -120,7 +120,7 @@ const chordClip = [];
 }
 {
     const m = load("Generate", "keywise_lines.js", ["melody"]);
-    m.state.source = 8;   // This Clip
+    m.state.source = 1;   // This Clip
     const mel = m.transform(m.state, chordClip, null);
     const cMajor = [0, 2, 4, 5, 7, 9, 11];
     assert(mel.length > 8);
@@ -133,53 +133,67 @@ const chordClip = [];
     console.log("melody ok  ", mel.map((n) => n.pitch).join(" "));
 }
 
-// ─── Prog A-H: Chords saves progressions, Bass/Melody pick one ───────────────
+// ─── Trk/Slot: Bass/Melody follow a Session View clip ────────────────────────
+// A stand-in for Live's API with a small Live set:
+//   Track 1 "Chords": slot 1 C G Am F (1 bar each), slot 2 empty,
+//                     slot 3 Am F C G (F half a bar), slot 4 Am G C with its loop on G C
+//   Track 2 "Drums":  slot 1 an audio clip
+function chordClipNotes(chords) {   // [[pitches], beats] ... -> notes
+    const notes = []; let t = 0;
+    chords.forEach(([pitches, beats]) => {
+        pitches.forEach((p) => notes.push({ pitch: p, start_time: t, duration: beats, velocity: 100, mute: 0 }));
+        t += beats;
+    });
+    return notes;
+}
+const C = [60, 64, 67], G = [55, 59, 62], Am = [57, 60, 64], F = [53, 57, 60];
+const liveSet = [
+    { name: "Chords", slots: [
+        { midi: 1, start: 0, end: 16, notes: chordClipNotes([[C, 4], [G, 4], [Am, 4], [F, 4]]) },
+        null,
+        { midi: 1, start: 0, end: 14, notes: chordClipNotes([[Am, 4], [F, 2], [C, 4], [G, 4]]) },
+        { midi: 1, start: 4, end: 12, notes: chordClipNotes([[Am, 4], [G, 4], [C, 4]]) },
+    ] },
+    { name: "Drums", slots: [{ midi: 0, start: 0, end: 4, notes: [] }] },
+];
+function FakeLiveAPI(callback, path) {
+    const m = path.match(/^live_set tracks (\d+)(?: clip_slots (\d+) clip)?$/);
+    const track = m && liveSet[+m[1]];
+    const clip = track && m[2] !== undefined ? track.slots[+m[2]] : null;
+    const target = m && m[2] !== undefined ? clip : track;
+    this.id = target ? "7" : "0";
+    this.get = (prop) => ({ name: [track && track.name], is_midi_clip: [clip && clip.midi],
+                            loop_start: [clip && clip.start], loop_end: [clip && clip.end] })[prop];
+    this.call = (fn, fromPitch, pitchSpan, from, span) => JSON.stringify({ notes: clip.notes.filter(
+        (n) => n.start_time >= from && n.start_time < from + span) });
+}
+
 {
-    const c = load("Generate", "keywise_chords.js");
-    // Wire Chords' control messages back in, as the patch does in Live.
-    const control = { Root: "root", Scale: "scale", Clip_Scale: "clipscale", Chord_Type: "type",
-        Length: "length", Octave: "octave", Inversion: "inversion", Bass: "bass", Fill: "fill",
-        Style: "style", Rate: "rate", Voice_Leading: "voicelead", Velocity: "velocity" };
-    c.onOutlet = (a) => {
-        if (a[0] !== 2) return;
-        if (a[1] === "script") c[control[a[3]]](a[4]);
-        if (["slot", "slottype", "slotlen", "slotinv"].includes(a[1])) c[a[1]](a[2], a[3]);
-    };
-
     const b = load("Generate", "keywise_lines.js", ["bass"]);
-    b.state.pattern = 0;  // Held
-    b.state.source = 0;   // Prog A
-    assert.strictEqual(b.transform(b.state, [], null), null);   // nothing saved yet
-    assert(b.readoutText().startsWith("Prog A is empty"));
-
-    c.loaded();                                    // Prog A: C major I V vi IV
-    c.bank(1);                                     // Prog B starts as a copy...
-    c.root(9); c.scale(1);                         // ...then becomes A minor i VI III VII
-    [1, 6, 3, 7].forEach((d, i) => c.slot(i, d));
-    c.slotlen(1, 3);                               // F lasts half a bar
-    eq(c.readoutText(c.state, null), "B · A Natural Minor:  Am  F  C  G");
-
-    const bangsBefore = c.out.filter((a) => a[0] === 1).length;
-    c.bank(0);                                     // back to A: controls restored
-    eq(c.state.root, 0); eq(c.state.slots.slice(0, 4), [1, 5, 6, 4]); eq(c.state.slotLens[1], 0);
-    eq(c.readoutText(c.state, null), "A · C Major:  C  G  Am  F");
-    eq(c.out.filter((a) => a[0] === 1).length, bangsBefore);   // switching never rewrites the clip
-
+    b.LiveAPI = FakeLiveAPI;
+    b.state.pattern = 0;  // Held, so each chord gives one root note
     const sel = (end) => ({ time_selection: { start_time: 0, end_time: end } });
-    eq(b.transform(b.state, [], sel(16)).map((n) => n.pitch), [36, 43, 45, 41]);      // Prog A
-    b.state.source = 1;                                                                 // Prog B
-    eq(b.transform(b.state, [], sel(26)).map((n) => n.pitch + "@" + n.start_time), [
-        "45@0", "41@4", "36@6", "43@10", "45@14", "41@18", "36@20", "43@24"]);        // looped
-    eq(b.readoutText(), "Prog B · A Natural Minor:  Am  F  C  G  Am  F  C  G");
-    b.state.source = 2;                                                                 // Prog C: empty
-    assert.strictEqual(b.transform(b.state, [], sel(16)), null);
+    const roots = (trk, slot, end) => { b.state.track = trk; b.state.slot = slot;
+        const out = b.transform(b.state, [], sel(end)); return out && out.map((n) => n.pitch + "@" + n.start_time); };
+
+    eq(roots(1, 1, 32), ["36@0", "43@4", "45@8", "41@12", "36@16", "43@20", "45@24", "41@28"]);  // looped twice
+    eq(b.readoutText(), 'Track 1 "Chords", slot 1:  C  G  Am  F  C  G  Am  F');
+    eq(roots(1, 3, 26), ["45@0", "41@4", "36@6", "43@10", "45@14", "41@18", "36@20", "43@24"]);
+    eq(roots(1, 4, 16), ["43@0", "36@4", "43@8", "36@12"]);  // only the loop (beats 4-12: G C) is used
+    eq(roots(1, 2, 16), null);
+    assert(b.readoutText().startsWith('Track 1 "Chords", slot 2 is empty.'));
+    eq(roots(9, 1, 16), null);
+    assert(b.readoutText().startsWith("There is no track 9."));
+    eq(roots(2, 1, 16), null);
+    assert(b.readoutText().startsWith('Track 2 "Drums", slot 1 isn\'t a MIDI clip.'));
 
     const m = load("Generate", "keywise_lines.js", ["melody"]);
-    m.state.source = 1;
+    m.LiveAPI = FakeLiveAPI;
+    m.state.track = 1; m.state.slot = 3;
     const aMinor = [9, 11, 0, 2, 4, 5, 7];
     const mel = m.transform(m.state, [], sel(14));
     assert(mel.length > 4 && mel.every((n) => aMinor.includes(n.pitch % 12) && n.start_time < 14));
-    console.log("prog A-H ok");
+    console.log("trk/slot ok");
 }
 
 // ─── Keys ──────────────────────────────────────────────────────────────

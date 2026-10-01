@@ -14,9 +14,10 @@ works out the notes for whichever key and mode you pick.
 | [**Keywise Melody**](#keywise-melody) | Writes a melody that follows your chords | Clip view → **Generate** |
 | [**Keywise Keys**](#keywise-keys) | Play one key, hear a full chord in your key | MIDI effect, in front of any instrument |
 
-**They work as a team:** Keywise Chords remembers up to eight progressions (**Prog A–H**: say verse
-in A, chorus in B). Open an empty clip on your bass or lead track, pick Keywise Bass or Keywise
-Melody, choose which progression to follow, and press Generate. No copying clips around.
+**They work as a team:** write your chords into a clip with Keywise Chords. Then open an empty clip on
+your bass or lead track, pick Keywise Bass or Keywise Melody, point it at the chord clip by its
+**track number** and **slot number**, and press Generate. No copying clips around, and it works for
+any number of songs and sections in one Live set.
 
 **Contents:** [Requirements](#requirements) · [Install](#install) · [Quick start](#quick-start) ·
 [Chords](#keywise-chords) · [Bass](#keywise-bass) · [Melody](#keywise-melody) · [Keys](#keywise-keys) ·
@@ -83,8 +84,7 @@ If you installed a version where Keywise Bass and Melody were in the **Transform
 
 ### Uninstalling
 
-Delete the files you copied (the `Keywise …amxd` devices and the `keywise_….js` files), and
-`keywise_progressions.json` in `MIDI Tools/Max Generators` (your saved progressions).
+Delete the files you copied (the `Keywise …amxd` devices and the `keywise_….js` files).
 
 ## Quick start
 
@@ -94,9 +94,10 @@ Delete the files you copied (the `Keywise …amxd` devices and the `keywise_….
 3. Choose **Keywise Chords** from the Generate menu and press **Generate**.
    You get **I – V – vi – IV** in C major: C, G, Am, F.
 4. Change the key, the scale/mode, the chords or anything else on the device. The clip updates as you go.
-5. For a bassline: on a bass track, create an empty MIDI clip of the same length and open it. In its
-   **Generate** section choose **Keywise Bass** and press **Generate**. The bassline follows your
-   Keywise Chords progression. **Keywise Melody** works the same way on a lead track.
+5. For a bassline: say your chord clip is on **track 1, slot 1** in Session View. On a bass track,
+   create an empty MIDI clip of the same length and open it. In its **Generate** section choose
+   **Keywise Bass**, set **Trk 1** and **Slot 1**, and press **Generate**. **Keywise Melody** works
+   the same way on a lead track.
 
 Hover over any control and Live's **Info View** (bottom left) explains what it does.
 
@@ -126,7 +127,6 @@ The device has six tabs: **Key · 1-4 · 5-8 · 9-12 · 13-16 · Feel**.
 | **Clip Key** | on / off | Ignore Key and Scale and use the clip's own **Scale** setting (Live's Scale Mode) instead. |
 | **Fill** | on / off | On (default): repeat the progression until the selection is full. Off: write it once. |
 | **Presets** | see below | Loads a progression into the chord slots and resets their type, length and inversion. |
-| **Prog** | Prog A – Prog H | Which progression you are editing. See [Prog A–H](#prog-ah). |
 | **Duplicate Chords** | button | Copies your chords into the next empty slots. See [Duplicate Chords](#duplicate-chords). |
 
 **Presets:**
@@ -171,30 +171,6 @@ depends on the scale, and the readout shows the real chord name.
 
 **Example** (C major): `I / Type=` · `V / 7th` · `VI / 9th / 1/2` · `IV / 7th` gives
 **C (1 bar) – G7 (1 bar) – Am9 (½ bar) – Fmaj7 (1 bar)**.
-
-### Prog A–H
-
-Keywise Chords remembers **eight progressions**, A to H, each with its own chords and settings
-(key, scale, chord types, lengths, inversions, feel). Use one letter per section of your song, e.g.
-verse = A, chorus = B, bridge = C.
-
-- The **Prog** menu (Key tab, bottom left) picks the letter you're editing. Every change is saved
-  under that letter straight away.
-- **Switching to a letter you've used** brings its progression back onto the controls, so you can
-  carry on editing it.
-- **Switching to an empty letter** starts it as a copy of the progression you were on: handy for a
-  variation of the verse.
-- **Switching letters never changes the open clip.** Press **Generate** to write the progression
-  into it.
-- **Keywise Bass and Melody** follow whichever letter you choose in their **From** menu.
-
-A typical song: open the verse chord clip, set Prog to **A**, make the verse chords, Generate. Open the
-chorus chord clip, set Prog to **B**, make the chorus chords, Generate. Then the bass clips: verse bass
-**From Prog A**, chorus bass **From Prog B**.
-
-The progressions are saved in a small file, `keywise_progressions.json`, next to the devices in your
-User Library, so they're still there after you restart Live. They are shared by all your Live sets:
-starting a new song, just reuse the letters.
 
 ### Duplicate Chords
 
@@ -255,24 +231,32 @@ progression: either the one you made in Keywise Chords, or the chords already in
 
 ### How to use it
 
-**From a Keywise Chords progression** (Prog A–H):
+**From another clip** (Trk/Slot, the default):
 
-1. Make a progression with **Keywise Chords** (any track) and note its letter, e.g. **Prog A**.
+1. Make a clip of chords in **Session View**, e.g. with Keywise Chords, and note where it is: its
+   **track number** (tracks count from the left, 1 = first track) and its **slot number** (clip
+   slots count down from the top, 1 = top slot).
 2. On your bass track, create an **empty MIDI clip** (same length as the chord clip) and open it.
-3. In the **Generate** section choose **Keywise Bass**, set **From** to **Prog A**, and press **Generate**.
+3. In the **Generate** section choose **Keywise Bass**, set **From** to **Trk/Slot**, set **Trk** and
+   **Slot** to the chord clip's numbers, and press **Generate**.
 4. Adjust the controls; the bassline updates as you go.
 
-The progression is looped to fill the clip, so a 4-bar progression fills an 8-bar clip twice.
-If you change the chords in Keywise Chords later, open the bass clip and press **Generate** again.
+The chord clip's loop is repeated to fill the bass clip, so a 4-bar progression fills an 8-bar clip
+twice. If you change the chords later, open the bass clip and press **Generate** again.
+
+**Example: a live set with several songs.** Song 1's verse chords are on track 1, slot 1 and its
+chorus on track 1, slot 2; song 2's verse is on track 1, slot 5. Make each bass clip in the same
+scene row on the bass track and point it at the chords: **Trk 1 Slot 1**, **Trk 1 Slot 2**,
+**Trk 1 Slot 5**.
 
 **From This Clip:**
 
-1. Open a clip that contains chords (for example a copy of your chord clip, or chords you played
-   with Keywise Keys).
+1. Open a clip that contains chords (for example chords you played with Keywise Keys).
 2. Choose **Keywise Bass** in the **Generate** section, set **From** to **This Clip** and press **Generate**.
 3. The chords in the clip are replaced by the bassline.
 
-The readout shows what's being followed, e.g. `Prog B · A Natural Minor: Am F C G`.
+The readout shows what's being followed, e.g. `Track 1 "Chords", slot 2: Am F C G`, or what's wrong
+(an empty slot, a track that doesn't exist, an audio clip).
 
 ### Controls
 
@@ -283,7 +267,9 @@ The readout shows what's being followed, e.g. `Prog B · A Natural Minor: Am F C
 | **Oct** | 0 – 3 | Bass octave. Live's naming: C1 = MIDI note 36. Default: 1. |
 | **Gate** | 10 – 100 | How long each note lasts, as a % of its step. Lower = punchier. Default: 90. |
 | **Vel** | 1 – 127 | Note velocity. Default: 100. |
-| **From** | Prog A – Prog H, This Clip | Which progression to follow (see above). Default: Prog A. |
+| **From** | Trk/Slot, This Clip | Where the chords come from (see above). Default: Trk/Slot. |
+| **Trk** | 1 – 999 | Trk/Slot: track number of the chord clip (1 = first track on the left). |
+| **Slot** | 1 – 999 | Trk/Slot: clip slot of the chord clip in Session View (1 = top slot). |
 
 | Pattern | What you get |
 |---|---|
@@ -305,8 +291,8 @@ either the one you made in Keywise Chords, or the chords already in the clip.
 ### How to use it
 
 Same as [Keywise Bass](#how-to-use-it): open an empty clip on your lead track, choose **Keywise Melody**
-in the **Generate** section, set **From** to the progression's letter (Prog A–H) and press **Generate**.
-With **This Clip**, open a clip of chords instead; they get replaced by the melody.
+in the **Generate** section, set **Trk** and **Slot** to the chord clip's track and slot numbers, and
+press **Generate**. With **This Clip**, open a clip of chords instead; they get replaced by the melody.
 
 Notes on the beat land on **chord notes**; notes in between move through the **scale**, so the
 melody always fits. Treat it as a sketch: keep what you like and edit the rest.
@@ -321,18 +307,21 @@ melody always fits. Treat it as a sketch: keep what you like and edit the rest.
 | **Var** | 1 – 99 | Variation. Every number is a different melody over the same chords, and the same number always gives the same melody. Flip through them to audition ideas. |
 | **Vel** | 1 – 127 | Velocity of notes on the beat (notes between beats are a little softer). Default: 100. |
 | **Repeat Motif** | on / off | On (default): every bar reuses the same rhythm, so the melody has a hook. Off: a new rhythm each bar. |
-| **From** | Prog A – Prog H, This Clip | Which progression to follow. Default: Prog A. |
+| **From** | Trk/Slot, This Clip | Where the chords come from. Default: Trk/Slot. |
+| **Trk**, **Slot** | 1 – 999 | Trk/Slot: track and slot number of the chord clip, as for Keywise Bass. |
 
 ### Notes for Bass and Melody
 
-- **Prog A–H** follows that letter's progression from Keywise Chords (see [Prog A–H](#prog-ah)).
-  If the letter is empty, the readout says so and the clip is left untouched.
-- **This Clip: block or strummed chords work best.** Chords are detected from notes that start together (within
-  1/8 of a beat), and each chord lasts until the next one starts. Arpeggiated clips are read as
-  single notes and give odd results.
+- **Trk/Slot reads Session View clips.** Track numbers count every track from the left, including
+  group tracks; the readout shows the track's name so you can check you've got the right one. If the
+  slot is empty, isn't a MIDI clip, or the track doesn't exist, the readout says so and your clip is
+  left untouched. Only the chord clip's loop is used.
+- **Block or strummed chords work best.** Chords are detected from notes that start together (within
+  1/4 of a beat), and each chord lasts until the next one starts. Chord clips written with Keywise
+  Chords' Arp styles are read as single notes and give odd results; use Block or Strum there.
 - **Inversions are understood.** B–D–G is read as G, not as a B chord.
-- **Passing notes** come from the clip's **Scale** setting if it has one, otherwise from the key and
-  scale saved with the progression (Prog A–H) or the notes in your chords (This Clip).
+- **Passing notes** come from the clip's **Scale** setting if it has one, otherwise from the notes
+  in your chords.
 
 ---
 
@@ -405,8 +394,8 @@ that's what **I, ii, iii, IV, V, vi, vii°** mean.
 | The Max window says it can't find a `.js` file | The `.js` file must be in the same folder as the `.amxd`. Copy both. |
 | Nothing happens when I press Generate | A MIDI clip must be open in the clip view. |
 | The Generate section is cut off | Drag the divider above the clip view upwards to make it taller, or scroll the left-hand column. |
-| Bass or Melody says "Prog A is empty" | In Keywise Chords, set **Prog** to that letter and make a progression, or pick another letter in **From**. |
-| Bass follows the wrong progression | Check the letter in its **From** menu matches the **Prog** letter of the chords you want. |
+| Bass or Melody says a slot "is empty" or "There is no track …" | Check **Trk** and **Slot**: tracks count from the left (1 = first, group tracks included), slots from the top (1 = top). The chord clip must be in Session View. |
+| Bass follows the wrong chords | The readout shows which track and slot it read; adjust **Trk** / **Slot**. |
 | Bass or Melody doesn't match my new chords | They don't follow changes on their own: open the bass/melody clip and press Generate again. |
 | This Clip gives strange results | Use block or strummed chords, and run it on chords, not on a clip that already holds a bassline or melody. |
 | Keywise Keys plays nothing on black keys | That's White Keys mode. Switch **Keys** to **Snap** to use every key. |
