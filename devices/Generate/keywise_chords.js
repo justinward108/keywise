@@ -273,6 +273,9 @@ var PRESETS = [
 
 var NUM_SLOTS = 16;
 
+// Random Lengths: total length choices, in bars. Order must match build_devices.py.
+var RANDOM_BARS = [1, 2, 4, 8, 16];
+
 // ─── STATE (set by the UI controls) ──────────────────────────────────────────
 
 var state = {
@@ -289,6 +292,9 @@ var state = {
     style: 0,         // index into STYLES
     rate: 2,          // index into RATES
     voiceLead: 0,     // 1 = pick inversions so chords move smoothly
+    randCount: 4,     // Random Chords: how many chords
+    randLen: 5,       // Random Chords: each chord's length, index into SLOT_LENGTHS (5 = 1 bar)
+    randBars: 2,      // Random Lengths: total length, index into RANDOM_BARS (2 = 4 bars)
     fillType: 0,      // index into FILLS
     fillEvery: 0,     // index into FILL_EVERY (theory.js)
     slots:    [1, 5, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -630,6 +636,107 @@ function preset(v) {
     }
     outlet(2, "preset", "set", 0);
 }
+
+// ─── RANDOM PROGRESSIONS ─────────────────────────────────────────────────────
+// Random, but following the habits of most songs so the result is musical:
+// start on I, prefer the common chords (I, IV, V, vi), never the same chord
+// twice in a row, and often end on V or IV so the progression wants to loop.
+
+// How likely each scale degree is (7-note scales). Scales with fewer notes
+// treat every degree equally.
+var DEGREE_WEIGHTS = { 1: 3, 2: 2, 3: 1, 4: 3, 5: 3, 6: 3, 7: 0.5 };
+
+function weightedPick(options, weights, rand) {
+    var total = 0;
+    options.forEach(function (o) { total += weights[o] || 1; });
+    var r = rand() * total;
+    for (var i = 0; i < options.length; i++) {
+        r -= weights[options[i]] || 1;
+        if (r < 0) return options[i];
+    }
+    return options[options.length - 1];
+}
+
+// n random scale degrees (1-based) for the current scale.
+function randomDegrees(st, ctx, n, rand) {
+    var len = currentScale(st, ctx).intervals.length;
+    var weights = len === 7 ? DEGREE_WEIGHTS : {};
+    var degrees = [1];
+    for (var i = 1; i < n; i++) {
+        var prev = degrees[i - 1];
+        var options = [];
+        for (var d = 1; d <= len; d++) if (d !== prev) options.push(d);
+        if (i === n - 1 && n >= 3 && len === 7 && rand() < 0.6) {
+            // a cadence: end on V or IV (whichever isn't the previous chord)
+            options = [5, 4].filter(function (d) { return d !== prev; });
+        }
+        degrees.push(weightedPick(options, weights, rand));
+    }
+    return degrees.slice(0, n);
+}
+
+// Fewest chords of 2, 4 or 8 beats that add up to `beats` (an even number).
+function fewestChords(beats) {
+    var rest = beats % 8;
+    return Math.floor(beats / 8) + (rest === 0 ? 0 : rest === 6 ? 2 : 1);
+}
+
+// Split totalBeats into chord lengths of half a bar, 1 bar or 2 bars (mostly
+// 1 bar), using no more than the 16 slots. Each choice leaves a remainder that
+// can still be filled with the slots that are left.
+function randomLengths(totalBeats, rand) {
+    var lengths = [];
+    var left = totalBeats;
+    while (left > 1e-6) {
+        var slotsLeft = NUM_SLOTS - lengths.length - 1;
+        var options = [2, 4, 8].filter(function (b) {
+            return b <= left + 1e-6 && fewestChords(left - b) <= slotsLeft;
+        });
+        if (!options.length) options = [left];
+        lengths.push(weightedPick(options, { 2: 1, 4: 2, 8: 1 }, rand));
+        left -= lengths[lengths.length - 1];
+    }
+    return lengths;
+}
+
+// Put a progression on the slot menus (like a preset): degrees with their
+// lengths (SLOT_LENGTHS indexes), types and inversions back to "=".
+function writeProgression(degrees, lengthIndexes) {
+    dupBlock = 0;
+    for (var i = 0; i < NUM_SLOTS; i++) {
+        outlet(2, "slot", i, degrees[i] || 0);
+        outlet(2, "slottype", i, 0);
+        outlet(2, "slotlen", i, i < degrees.length ? lengthIndexes[i] : 0);
+        outlet(2, "slotinv", i, 0);
+    }
+}
+
+function beatsToSlotLength(beats) {
+    var i = SLOT_LENGTHS.indexOf(beats);
+    return i > 0 ? i : 0;
+}
+
+// Random Chords button: randCount chords, each randLen long.
+function randomchords(v) {
+    if (!ready || v === 0) return;
+    var n = Math.max(1, Math.min(NUM_SLOTS, state.randCount));
+    var lens = [];
+    for (var i = 0; i < n; i++) lens.push(state.randLen);
+    writeProgression(randomDegrees(state, context, n, Math.random), lens);
+}
+
+// Random Lengths button: a random number of chords, random lengths, adding
+// up to randBars bars.
+function randomlengths(v) {
+    if (!ready || v === 0) return;
+    var lengths = randomLengths(RANDOM_BARS[state.randBars] * 4, Math.random);
+    writeProgression(randomDegrees(state, context, lengths.length, Math.random),
+                     lengths.map(beatsToSlotLength));
+}
+
+function randcount(v) { state.randCount = v | 0; }
+function randlen(v)   { state.randLen = (v | 0) + 1; }   // menu has no "Len=" entry
+function randbars(v)  { state.randBars = v | 0; }
 
 // Duplicate: each press adds one more copy of your original chords after
 // the last filled slot, so 4 chords go 4 -> 8 -> 12 -> 16 (play a phrase

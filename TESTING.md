@@ -60,6 +60,16 @@ Everything to check in Ableton Live before releasing Keywise. Riskiest first. Re
   Select from bar 2 and press Generate. If they start at bar 1, tell Claude.
 - [ ] **The readout at the bottom isn't cut off with long progressions**
 
+## Random progressions (Keywise Chords, Feel tab)
+
+- [ ] **Random Chords: set 6 chords, 1/2 bar each, press Random**  
+  Six half-bar chords appear in the slots, starting on I. Press again for a different one.
+- [ ] **Random Lengths: set 8 bars, press Random Lengths**  
+  A random number of chords that add up to exactly 8 bars.
+- [ ] **The results sound musical in a few keys and modes**  
+  Try a major key, a minor key and Dorian.
+- [ ] **You can edit the chords afterwards on the 1-4 … 13-16 tabs**
+
 ## Keywise Keys
 
 *Never tried in Live yet.*

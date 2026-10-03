@@ -78,6 +78,9 @@ SLOT_TYPES = ["Type=", "Triad", "7th", "9th", "11th", "13th", "5th", "add9", "su
               "maj9", "min9", "9", "add11", "mM7", "dim7", "aug"]
 STYLES = ["Block", "Strum Up", "Strum Down", "Arp Up", "Arp Down", "Arp Up-Down", "Arp Random"]
 RATES = ["1/64", "1/32", "1/16", "1/8", "1/4", "1/16T", "1/8T"]
+RANDOM_LENGTHS = ["1/8 bar", "1/4 bar", "1/2 bar", "3/4 bar", "1 bar", "1.5 bars", "2 bars",
+                  "3 bars", "4 bars"]                  # SLOT_LENGTHS without "Len="
+RANDOM_BARS = ["1 bar", "2 bars", "4 bars", "8 bars", "16 bars"]  # src/chords.js RANDOM_BARS
 CHORD_FILLS = ["No Fill", "Turnaround", "Dominant", "Sus", "Walk-up", "Push", "Break"]  # src/chords.js FILLS
 PRESETS = ["Presets…", "I V vi IV", "I vi IV V", "vi IV I V", "ii V I", "vi ii V I",
            "I IV V IV", "i VI III VII", "i iv v", "i VII VI V", "Canon (8)",
@@ -166,6 +169,20 @@ def build_chords():
              "A fill for the last bar of each phrase, leading into the next chord. Turnaround: ii then V7. "
              "Dominant: V7. Sus: Vsus4 then V. Walk-up: two chords stepping up. Push: the next chord an 8th early. "
              "Break: two stabs, then silence.")
+    # Random progressions: written into the chord slots, so they can be edited.
+    ui.numbox("Random Count", "RndN", 1, 16, 4, [0, 75, 46, 16], "randcount",
+              "Random Chords: how many chords to make.", "%d chords")
+    ui.menu("Random Length", "RndLen", RANDOM_LENGTHS, 4, [48, 75, 52, 16], "randlen",
+            "Random Chords: how long each chord is.")
+    ui.button("Random Chords", "Random", [102, 75, 50, 16], "randomchords",
+              "Makes a random progression with this many chords of this length, in your key and mode: "
+              "starts on I, favours I, IV, V and vi, never repeats a chord twice in a row. "
+              "It goes into the chord slots, so you can edit it.")
+    ui.menu("Random Bars", "RndBars", RANDOM_BARS, 2, [0, 94, 52, 16], "randbars",
+            "Random Lengths: how long the whole progression is.")
+    ui.button("Random Lengths", "Random Lengths", [54, 94, 98, 16], "randomlengths",
+              "Makes a random progression exactly this long, with a random number of chords of random "
+              "lengths (half a bar, 1 bar or 2 bars). It goes into the chord slots, so you can edit it.")
 
     readout = ui.readout([0, 116, TOOL_W, 30])
     p.connect(feedback, readout, 0, 0)

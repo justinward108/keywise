@@ -20,7 +20,7 @@ your bass or lead track, pick Keywise Bass or Keywise Melody, point it at the ch
 any number of songs and sections in one Live set.
 
 **Contents:** [Requirements](#requirements) · [Install](#install) · [Quick start](#quick-start) ·
-[Chords](#keywise-chords) · [Fills](#fills) · [Bass](#keywise-bass) · [Melody](#keywise-melody) · [Keys](#keywise-keys) ·
+[Chords](#keywise-chords) · [Random](#random-progressions) · [Fills](#fills) · [Bass](#keywise-bass) · [Melody](#keywise-melody) · [Keys](#keywise-keys) ·
 [How the chord numbers work](#how-the-chord-numbers-work) · [Troubleshooting](#troubleshooting) ·
 [Building from source](#building-from-source) · [License](#license)
 
@@ -202,6 +202,26 @@ If all 16 slots are used, or no chords are filled in, it does nothing and says w
 | **Vel** | 1 – 127 | Note velocity. Default: 100. |
 | **Fill** | No Fill, Turnaround, Dominant, Sus, Walk-up, Push, Break | A chord fill in the last bar of each phrase. See [Fills](#fills). |
 | **Every** | Each Pass, End of Clip, Every 4 Bars, Every 8 Bars | Where the fills go. |
+| **Chords**, length, **Random** | 1 – 16 chords; 1/8 bar – 4 bars; button | Random Chords: a random progression with that many chords of that length. See [Random progressions](#random-progressions). |
+| Total length, **Random Lengths** | 1, 2, 4, 8, 16 bars; button | Random Lengths: a random progression exactly that long, with a random number of chords of random lengths. |
+
+### Random progressions
+
+Two buttons at the bottom of the Feel tab make a random progression in your key and mode:
+
+- **Random Chords**: set how many chords (1–16) and how long each one is, then press **Random**.
+- **Random Lengths**: set how long the whole progression is (1, 2, 4, 8 or 16 bars), then press
+  **Random Lengths**. You get a random number of chords, each half a bar, 1 bar or 2 bars long
+  (mostly 1 bar), adding up to exactly that length.
+
+"Random" follows the habits of most songs, so the results sound musical rather than like noise:
+they start on **I** (the home chord), favour the common chords (**I, IV, V, vi**), never play the
+same chord twice in a row, and often end on **V** or **IV** so the progression wants to loop back
+round.
+
+The result goes into the chord slots, just like a preset, so you can see it on the 1-4 … 13-16 tabs
+and change any chord you don't like. Press again for a different one. Each chord's type and
+inversion reset to "=" (following the Key tab).
 
 ### Fills
 

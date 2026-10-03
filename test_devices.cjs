@@ -205,6 +205,45 @@ function FakeLiveAPI(callback, path) {
     console.log("trk/slot ok");
 }
 
+// ─── Random progressions ─────────────────────────────────────────────────────
+{
+    const c = load("Generate", "keywise_chords.js");
+    for (let seed = 1; seed <= 200; seed++) {
+        const rand = c.seededRandom(seed);
+        const n = 1 + (seed % 16);
+        const d = Array.from(c.randomDegrees(c.state, null, n, rand));
+        assert.strictEqual(d.length, n);
+        assert.strictEqual(d[0], 1);                                       // starts on I
+        assert(d.every((x) => x >= 1 && x <= 7));
+        assert(d.every((x, i) => i === 0 || x !== d[i - 1]), "repeat: " + d);   // never twice in a row
+
+        const bars = [1, 2, 4, 8, 16][seed % 5];
+        const lens = Array.from(c.randomLengths(bars * 4, rand));
+        assert.strictEqual(lens.reduce((a, b) => a + b, 0), bars * 4);   // adds up exactly
+        assert(lens.length <= 16 && lens.every((b) => [2, 4, 8].includes(b)), "lengths: " + lens);
+    }
+    // Pentatonic (5 notes): degrees stay inside the scale.
+    c.state.scale = 9;
+    assert(Array.from(c.randomDegrees(c.state, null, 16, c.seededRandom(3))).every((x) => x >= 1 && x <= 5));
+    c.state.scale = 0;
+
+    // The buttons write into the slots (wired back like the patch does).
+    c.onOutlet = (a) => { if (a[0] === 2 && ["slot", "slottype", "slotlen", "slotinv"].includes(a[1])) c[a[1]](a[2], a[3]); };
+    c.loaded();
+    c.randcount(6); c.randlen(2);           // menu item 2 = "1/2 bar"
+    c.randomchords(1);
+    eq(c.state.slots.filter((x) => x).length, 6);
+    eq(c.state.slotLens.slice(0, 6), [3, 3, 3, 3, 3, 3]);             // SLOT_LENGTHS[3] = 1/2 bar
+    eq(c.state.slots.slice(6), Array(10).fill(0));
+    c.randbars(3);                          // 8 bars
+    c.randomlengths(1);
+    const filled = c.state.slots.filter((x) => x).length;
+    const beats = c.state.slotLens.slice(0, filled).reduce((a, i) => a + c.SLOT_LENGTHS[i], 0);
+    eq(beats, 32);
+    c.randomchords(0);                      // a button release does nothing
+    console.log("random ok   e.g.", c.readoutText(c.state, null));
+}
+
 // ─── Fills ───────────────────────────────────────────────────────────────────
 {
     const c = load("Generate", "keywise_chords.js");
