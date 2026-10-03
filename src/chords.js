@@ -84,7 +84,9 @@ var state = {
     slotTypes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     slotLens: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     // Per-slot inversion: 0 = follow Inversion / Voice Leading, 1-4 = Root, 1st, 2nd, 3rd
-    slotInvs: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    slotInvs: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    // Per-slot Lock: 1 = the random buttons leave this chord exactly as it is
+    slotLocks: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 };
 
 var context = null;   // last context dictionary from live.miditool.in
@@ -385,7 +387,8 @@ function readoutText(st, ctx) {
     var head = NOTES[sc.root % 12] + " " + sc.name;
     if (!chords.length) return head + ": pick chords above";
     // Kept short: the Generate panel is narrow.
-    return (lastSeed ? "Seed " + lastSeed + " · " : "") + head + ":  " +
+    var locks = lockedCount();
+    return (lastSeed ? "Seed " + lastSeed + " · " : "") + (locks ? locks + " locked · " : "") + head + ":  " +
         chords.map(function (c) { return c.name; }).join("  ");
 }
 
@@ -440,6 +443,12 @@ function slottype(i, v) {
     if (i < 0 || i >= NUM_SLOTS) return;
     state.slotTypes[i] = v | 0;
     changed();
+}
+
+function slotlock(i, v) {
+    if (i < 0 || i >= NUM_SLOTS) return;
+    state.slotLocks[i] = v ? 1 : 0;
+    outlet(2, "readout", "set", readoutText(state, context));   // nothing to rewrite
 }
 
 function slotinv(i, v) {
@@ -524,15 +533,22 @@ function degreeQualities(st, ctx) {
 }
 
 // n random scale degrees (1-based) following the harmony rules above.
-function randomDegrees(st, ctx, n, rand) {
+// `fixed` (optional) holds locked chords: fixed[i] is a degree to keep at
+// position i, or 0 to choose one. Chosen chords also lead well into a locked
+// chord that follows them.
+function randomDegrees(st, ctx, n, rand, fixed) {
+    fixed = fixed || [];
     var len = currentScale(st, ctx).intervals.length;
     var variation = VARIATIONS[st.randVariation] || "Varied";
-    var degrees = [1];
+    var degrees = [fixed[0] || 1];
     if (len !== 7) {
         // Pentatonic, blues, whole tone...: no functional harmony, just no repeats.
         for (var i = 1; i < n; i++) {
+            if (fixed[i]) { degrees.push(fixed[i]); continue; }
             var opts = [];
-            for (var d = 1; d <= len; d++) if (d !== degrees[i - 1] && !(i === n - 1 && d === 1)) opts.push(d);
+            for (var d = 1; d <= len; d++) {
+                if (d !== degrees[i - 1] && d !== fixed[i + 1] && !(i === n - 1 && d === 1)) opts.push(d);
+            }
             degrees.push(opts[Math.floor(rand() * opts.length)] || 1);
         }
         return degrees.slice(0, n);
@@ -547,11 +563,13 @@ function randomDegrees(st, ctx, n, rand) {
     if (!cadence.length) cadence = [5, 4];
 
     for (var i = 1; i < n; i++) {
+        if (fixed[i]) { degrees.push(fixed[i]); continue; }    // locked: keep it
         var prev = degrees[i - 1];
+        var next = fixed[i + 1] || 0;                          // a locked chord coming next
         var last = i === n - 1;
         var weights = {}, options = [];
         for (var d = 1; d <= 7; d++) {
-            if (d === prev || !prefer[d]) continue;
+            if (d === prev || d === next || !prefer[d]) continue;
             if (!chaotic) {
                 if (variation === "Conservative" && quality[d] === "dim") continue;
                 if (!last && i >= 3 && d === degrees[i - 2] && prev === degrees[i - 3]) continue;   // A B A B (the ending wins)
@@ -559,16 +577,18 @@ function randomDegrees(st, ctx, n, rand) {
                 if (quality[prev] === "dim" && d !== prev % 7 + 1 && d !== (prev + 2) % 7 + 1) continue;
                 if (quality[d] === "dim" && (last || i === n - 2)) continue;
                 if (last && cadence.indexOf(d) < 0) continue;
-                // leave an ending chord available for the last slot
-                if (i === n - 2 && cadence.length === 1 && cadence[0] === d) continue;
+                // leave an ending chord available for the last slot (unless that's locked)
+                if (i === n - 2 && !fixed[n - 1] && cadence.length === 1 && cadence[0] === d) continue;
+                // a diminished chord must resolve into a locked chord after it
+                if (next && quality[d] === "dim" && next !== d % 7 + 1 && next !== (d + 2) % 7 + 1) continue;
             }
-            var w = prefer[d] * (chaotic ? 1 : motion(prev, d));
+            var w = prefer[d] * (chaotic ? 1 : motion(prev, d) * (next ? motion(d, next) : 1));
             if (!chaotic && quality[d] === "dim") w *= 0.15;                  // rare
             if (!chaotic && i >= 2 && d === degrees[i - 2]) w *= 0.3;        // straight back: discouraged
             if (w > 0) { weights[d] = w; options.push(d); }
         }
         if (!options.length) {                    // nothing fits the rules: any other chord
-            for (var e = 1; e <= 7; e++) if (e !== prev) { weights[e] = 1; options.push(e); }
+            for (var e = 1; e <= 7; e++) if (e !== prev && e !== next) { weights[e] = 1; options.push(e); }
         }
         degrees.push(weightedPick(options, weights, rand));
     }
@@ -620,11 +640,12 @@ function randomLengths(totalBeats, rand, opts) {
 
 // Put a progression on the slot menus (like a preset): degrees, lengths
 // (SLOT_LENGTHS indexes), and optionally types and inversions (slot menu
-// values; 0 = "=").
+// values; 0 = "="). Locked slots are left exactly as they are.
 function writeProgression(degrees, lengthIndexes, types, inversions) {
     dupBlock = 0;
     writingRandom = 1;
     for (var i = 0; i < NUM_SLOTS; i++) {
+        if (state.slotLocks[i]) continue;
         var used = i < degrees.length;
         outlet(2, "slot", i, used ? degrees[i] : 0);
         outlet(2, "slottype", i, used && types ? types[i] : 0);
@@ -666,33 +687,79 @@ function finishRandom(degrees, lengthIndexes, rand) {
     outlet(2, "readout", "set", readoutText(state, context));
 }
 
-// Random Chords button: randCount chords, each randLen long.
+// ─── LOCK ────────────────────────────────────────────────────────────────────
+// Locked slots keep their chord, type, length and inversion when a random
+// button is pressed; only the unlocked ones are rerolled, chosen to lead into
+// and out of the locked chords. (Presets and your own edits still change them.)
+
+function lockedCount() {
+    return state.slotLocks.filter(function (l) { return l; }).length;
+}
+
+// The locked degrees for positions 0..n-1 (0 where a new chord is wanted).
+function lockedDegrees(n) {
+    var fixed = [];
+    for (var i = 0; i < n; i++) fixed.push(state.slotLocks[i] ? state.slots[i] : 0);
+    return fixed;
+}
+
+// A slot's length in beats as it plays (its own, or the Length menu's).
+function slotBeats(i) {
+    return SLOT_LENGTHS[state.slotLens[i]] || LENGTHS[state.length];
+}
+
+// Random Chords button: randCount chords, each randLen long (locked ones kept).
 function randomchords(v) {
     if (!ready || v === 0) return;
     var rand = seededForPress();
     var n = Math.max(1, Math.min(NUM_SLOTS, state.randCount));
     var lens = [];
     for (var i = 0; i < n; i++) lens.push(state.randLen);
-    finishRandom(randomDegrees(state, context, n, rand), lens, rand);
+    finishRandom(randomDegrees(state, context, n, rand, lockedDegrees(n)), lens, rand);
 }
 
 // Random Lengths button: a random number of chords with random lengths,
-// adding up to randBars bars, within the shortest/longest and fewest/most limits.
+// adding up to randBars bars, within the shortest/longest and fewest/most
+// limits. With locked chords, the progression keeps its slots: locked ones
+// keep their lengths and the unlocked ones share out the rest of the time.
 function randomlengths(v) {
     if (!ready || v === 0) return;
     var rand = seededForPress();
-    var lengths = randomLengths(RANDOM_BARS[state.randBars] * 4, rand, {
+    var total = RANDOM_BARS[state.randBars] * 4;
+    var opts = {
         minBeats: SLOT_LENGTHS[state.randMinLen], maxBeats: SLOT_LENGTHS[state.randMaxLen],
         minCount: state.randMinCount, maxCount: state.randMaxCount,
         chaotic: VARIATIONS[state.randVariation] === "Chaotic"
-    });
-    if (!lengths) {
-        lastSeed = 0;
-        outlet(2, "readout", "set", "Can't fill " + RANDOM_BARS[state.randBars] +
-            " bars with those limits. Widen the shortest/longest chord or the fewest/most chords.");
-        return;
+    };
+    var problem = function (text) { lastSeed = 0; outlet(2, "readout", "set", text); };
+
+    if (!lockedCount()) {
+        var lengths = randomLengths(total, rand, opts);
+        if (!lengths) {
+            return problem("Can't fill " + RANDOM_BARS[state.randBars] +
+                " bars with those limits. Widen the shortest/longest chord or the fewest/most chords.");
+        }
+        return finishRandom(randomDegrees(state, context, lengths.length, rand), lengths.map(beatsToSlotLength), rand);
     }
-    finishRandom(randomDegrees(state, context, lengths.length, rand), lengths.map(beatsToSlotLength), rand);
+
+    var n = 0, lockedBeats = 0, free = [];
+    for (var i = 0; i < NUM_SLOTS; i++) if (state.slots[i] || state.slotLocks[i]) n = i + 1;
+    for (i = 0; i < n; i++) {
+        if (!state.slotLocks[i]) free.push(i);
+        else if (state.slots[i]) lockedBeats += slotBeats(i);
+    }
+    if (!free.length) return problem("Every chord is locked: unlock some to reroll them.");
+    opts.minCount = opts.maxCount = free.length;          // the unlocked slots, no more, no fewer
+    var freeLengths = randomLengths(total - lockedBeats, rand, opts);
+    if (!freeLengths) {
+        return problem("The locked chords take " + lockedBeats / 4 + " of the " + total / 4 + " bars, and the " +
+            free.length + " unlocked chords can't fill the rest within the shortest/longest limits. " +
+            "Change the limits or the total, or unlock a chord.");
+    }
+    var lens = [];
+    for (i = 0; i < n; i++) lens.push(0);
+    free.forEach(function (slot, k) { lens[slot] = beatsToSlotLength(freeLengths[k]); });
+    finishRandom(randomDegrees(state, context, n, rand, lockedDegrees(n)), lens, rand);
 }
 
 function randcount(v)     { state.randCount = v | 0; }

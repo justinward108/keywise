@@ -33,7 +33,8 @@ var state = {
     // bass
     pattern: 1,
     rate: 1,
-    bassOctave: 1,     // Live naming: C1 = MIDI 36
+    bassLow: 0,        // bass: lowest octave (C0)
+    bassHigh: 2,       // bass: highest octave (up to B2); roots sit in C1 (MIDI 36)
     gate: 90,          // % of each step the note lasts
     // melody
     rhythm: 1,
@@ -163,11 +164,11 @@ function bassLine(st, chords, scalePcs) {
     }
 
     chords.forEach(function (c, ci) {
-        var root = (st.bassOctave + 2) * 12 + c.root;
+        var root = bassBase(st) + c.root;
         var fifth = root + c.fifth;
         var dur = c.end - c.start;
         var next = chords[ci + 1];
-        var nextRoot = next ? (st.bassOctave + 2) * 12 + next.root : root;
+        var nextRoot = next ? bassBase(st) + next.root : root;
         var steps = Math.max(1, Math.round(dur / step));
 
         if (pattern === "Held") {
@@ -299,13 +300,32 @@ function chordAt(chords, t) {
 
 var FILL_BEATS = 2;
 
-// The melody stays between the Lowest and Highest octave dials, and wanders
-// around the middle of that window.
+// The notes stay between the Lowest and Highest octave dials. The melody
+// wanders around the middle of that window; the bass's roots sit in its
+// lowest octave.
 function melodyWindow(st) {
-    var lo = Math.min(st.lowOct, st.highOct), hi = Math.max(st.lowOct, st.highOct);
+    var low = MODE === "melody" ? st.lowOct : st.bassLow;
+    var high = MODE === "melody" ? st.highOct : st.bassHigh;
+    var lo = Math.min(low, high), hi = Math.max(low, high);
     var w = { low: (lo + 2) * 12, high: (hi + 2) * 12 + 11 };
     w.centre = Math.round((w.low + w.high) / 2);
     return w;
+}
+
+// C of the octave the bass's root notes sit in: one above Lowest when the
+// window spans 3+ octaves (room for walk-ups below and octave jumps above),
+// otherwise Lowest itself.
+function bassBase(st) {
+    var lo = Math.min(st.bassLow, st.bassHigh), hi = Math.max(st.bassLow, st.bassHigh);
+    return (lo + (hi - lo >= 2 ? 1 : 0) + 2) * 12;
+}
+
+// Move a group of pitches (a run) by octaves into the window, keeping its
+// shape; notes that still don't fit are moved one by one.
+function groupIntoWindow(w, run) {
+    while (Math.max.apply(null, run) > w.high && Math.min.apply(null, run) - 12 >= w.low) run = run.map(function (q) { return q - 12; });
+    while (Math.min.apply(null, run) < w.low && Math.max.apply(null, run) + 12 <= w.high) run = run.map(function (q) { return q + 12; });
+    return run.map(function (q) { return intoWindow(w, q); });
 }
 
 // Move a pitch by octaves into the window.
@@ -355,7 +375,7 @@ function lineFills(st, notes, chords, scalePcs, info) {
         };
 
         if (MODE !== "melody") {
-            var base = (st.bassOctave + 2) * 12;
+            var base = bassBase(st);
             var nextRoot = base + next.root, root = base + current.root;
             var gate = st.gate / 100;
             if (fill === "Push") {
@@ -364,9 +384,15 @@ function lineFills(st, notes, chords, scalePcs, info) {
                 return;
             }
             notes = cutNotes(notes, a, p);
-            var run = fill === "Walk-up" ? scaleSteps(scalePcs, nextRoot, -1, 4).reverse() :
-                      fill === "Run Down" ? scaleSteps(scalePcs, nextRoot, 1, 4).reverse() :
+            var w = melodyWindow(st);
+            var below = scaleSteps(scalePcs, nextRoot, -1, 4).reverse();   // walking up into the root
+            var above = scaleSteps(scalePcs, nextRoot, 1, 4).reverse();    // walking down into it
+            // No room on one side of the root in the window: come in from the other side.
+            if (fill === "Walk-up" && Math.min.apply(null, below) < w.low) fill = "Run Down";
+            else if (fill === "Run Down" && Math.max.apply(null, above) > w.high) fill = "Walk-up";
+            var run = fill === "Walk-up" ? below : fill === "Run Down" ? above :
                       fill === "Octaves" ? [root + 12, root, root + 12, root] : [];
+            if (run.length) run = groupIntoWindow(w, run);
             run.forEach(function (pitch, k) { add(pitch, a + k * 0.5, 0.5 * gate); });
             return;
         }
@@ -380,11 +406,7 @@ function lineFills(st, notes, chords, scalePcs, info) {
         if (fill === "Run Up" || fill === "Run Down") {
             var run = scaleSteps(scalePcs, target, fill === "Run Up" ? -1 : 1, 8).reverse();
             // keep the whole run within the melody's range, moving it by octaves
-            // keep the whole run in the window, moving it by octaves (or note by note if it can't fit)
-            var w = melodyWindow(st);
-            while (Math.max.apply(null, run) > w.high && Math.min.apply(null, run) - 12 >= w.low) run = run.map(function (q) { return q - 12; });
-            while (Math.min.apply(null, run) < w.low && Math.max.apply(null, run) + 12 <= w.high) run = run.map(function (q) { return q + 12; });
-            run = run.map(function (q) { return intoWindow(w, q); });
+            run = groupIntoWindow(melodyWindow(st), run);   // keep the run's shape, inside the window
             run.forEach(function (pitch, k) { add(pitch, a + k * 0.25, 0.24); });
         } else if (fill === "Pickup") {
             scaleSteps(scalePcs, target, -1, 2).reverse()
@@ -469,12 +491,10 @@ function transform(st, notes, ctx) {
         return n;
     });
     line = lineFills(st, line, chords, scalePcs, info);
-    if (MODE === "melody") {
-        // Last of all, keep every melody note (fills included) between its
-        // Lowest and Highest octaves.
-        var w = melodyWindow(st);
-        line.forEach(function (n) { n.pitch = intoWindow(w, n.pitch); });
-    }
+    // Last of all, keep every note (fills included) between the Lowest and
+    // Highest octaves.
+    var w = melodyWindow(st);
+    line.forEach(function (n) { n.pitch = intoWindow(w, n.pitch); });
     return line;
 }
 
@@ -506,14 +526,13 @@ function changed() {
 
 function pattern(v)   { state.pattern = v | 0; changed(); }
 function rate(v)      { state.rate = v | 0; changed(); }
-function octave(v)    { state.bassOctave = v | 0; changed(); }
 function gate(v)      { state.gate = Math.max(10, Math.min(100, v | 0)); changed(); }
 function rhythm(v)    { state.rhythm = v | 0; changed(); }
 function density(v)   { state.density = Math.max(0, Math.min(100, v | 0)); changed(); }
 function variation(v) { state.variation = v | 0; changed(); }
 function repeat(v)    { state.repeat = v ? 1 : 0; changed(); }
-function lowoct(v)    { state.lowOct = v | 0; changed(); }
-function highoct(v)   { state.highOct = v | 0; changed(); }
+function lowoct(v)    { if (MODE === "melody") state.lowOct = v | 0; else state.bassLow = v | 0; changed(); }
+function highoct(v)   { if (MODE === "melody") state.highOct = v | 0; else state.bassHigh = v | 0; changed(); }
 function velocity(v)  { state.velocity = Math.max(1, Math.min(127, v | 0)); changed(); }
 function source(v)    { state.source = v | 0; lastError = ""; outlet(2, "readout", "set", readoutText()); changed(); }
 function track(v)     { state.track = Math.max(1, v | 0); changed(); }

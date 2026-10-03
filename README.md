@@ -150,13 +150,14 @@ Presets are built from scale degrees, so they follow whatever key and scale you 
 
 ### Chord tabs (1-4, 5-8, 9-12, 13-16)
 
-Up to **16 chords**, four per tab. Each chord is a column of four menus:
+Up to **16 chords**, four per tab. Each chord is a column of four menus and a Lock button:
 
 ```
 [ I   ]  Chord: which chord of the scale, I – VII.  "-" leaves the slot empty (skipped).
 [Type=]  Chord type for this chord only.            "Type=" uses Chord type on the Key tab.
 [Len= ]  Length in bars for this chord only.        "Len="  uses Length on the Key tab.
 [Inv= ]  Inversion for this chord only.             "Inv="  uses Inv (and Voice Leading).
+[Lock ]  Keep this chord when the Random buttons reroll. See Lock, below.
 ```
 
 | Menu | Options |
@@ -233,6 +234,21 @@ then gives exactly that progression again (with the same key, scale and settings
 tried others. Set Seed back to **0** for new ones. The seed disappears from the readout once you
 change the progression yourself.
 
+**Lock: keep the good bits, reroll the rest.** Each chord has a **Lock** button under its column
+(1-4 … 13-16 tabs). A locked chord keeps its chord, type, length and inversion when you press
+**Random** or **Random Lengths**; only the unlocked chords are rerolled, and the new ones are chosen
+to lead naturally into and out of the locked ones (never the same chord right next to a locked one).
+The readout shows how many are locked, e.g. `Seed 812 · 2 locked · C Major: …`.
+
+The workflow: generate → hear something you like → lock those chords → reroll the rest → tweak.
+
+- **Random Chords** with locks makes the same number of chords as before; locked ones stay where they are.
+- **Random Lengths** with locks keeps your slots: locked chords keep their lengths, and the unlocked
+  ones share out the rest of the total length (within the shortest/longest limits). If the locked
+  chords leave no room, the readout says so and nothing changes.
+- Locks only protect chords from the Random buttons. Presets, Duplicate and your own edits still
+  change them.
+
 **Why it sounds like music (Conservative and Varied).** Random here follows the rules of thumb most
 songs follow, in any key or mode:
 
@@ -262,7 +278,10 @@ window, so its notes and inversion don't change, only its register. A chord too 
 + Bass note always stays below the chord.
 
 Keywise Melody has the same two dials and keeps every note, fills included, inside its window,
-wandering around the middle of it. Keywise Bass stays in its own octave (**Oct**).
+wandering around the middle of it. Keywise Bass has them too: its roots sit one octave above
+**Lowest** when the window spans three octaves or more (default C0 – B2, roots at C1), leaving room
+for walk-ups below and octave jumps above; in a tighter window, walk-ups come into the root from
+whichever side fits.
 
 ### Fills
 
@@ -368,7 +387,7 @@ The readout shows what's being followed, e.g. `Track 1 "Chords", slot 2: Am F C 
 |---|---|---|
 | **Pattern** | Held, Pulse, Root-Fifth, Octaves, Walking, Syncopated, Push | See below. Default: Pulse. |
 | **Rate** | 1/4, 1/8, 1/16, 1/8T | Step length of the pattern. Default: 1/8. |
-| **Oct** | 0 – 3 | Bass octave. Live's naming: C1 = MIDI note 36. Default: 1. |
+| **Lowest**, **Highest** (dials) | C0 – B7 | The octave window the bass stays in. Default C0 – B2, with the roots at C1 (MIDI 36). See [Register](#register). |
 | **Gate** | 10 – 100 | How long each note lasts, as a % of its step. Lower = punchier. Default: 90. |
 | **Vel** | 1 – 127 | Note velocity. Default: 100. |
 | **From** | Trk/Slot, This Clip | Where the chords come from (see above). Default: Trk/Slot. |

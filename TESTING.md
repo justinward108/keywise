@@ -42,7 +42,7 @@ Everything to check in Ableton Live before releasing Keywise. Riskiest first. Re
 
 - [ ] **All 7 bass patterns sound like their names**  
   Held, Pulse, Root-Fifth, Octaves, Walking, Syncopated, Push.
-- [ ] **Bass Rate, Oct and Gate do what they say**
+- [ ] **Bass Rate and Gate do what they say**
 - [ ] **Melody: changing Var gives a different melody; the same Var gives the same one**
 - [ ] **Melody Rhythm, Density and Repeat Motif do what they say**
 
@@ -76,9 +76,15 @@ Everything to check in Ableton Live before releasing Keywise. Riskiest first. Re
 - [ ] **Seed brings a progression back**  
   Note the seed in the readout, try a few others, type the seed in: the same progression returns.
 - [ ] **You can edit the chords afterwards on the 1-4 … 13-16 tabs**
+- [ ] **Lock: lock 2 chords, press Random a few times**  
+  The locked chords never change (chord, type, length, inversion); the others reroll around them. The readout says "2 locked".
+- [ ] **Lock with Random Lengths**  
+  Locked chords keep their lengths and the total still comes out right. Locking too much shows a message and changes nothing.
 - [ ] **The Lowest and Highest dials keep chords in that octave window**  
   Feel tab. Try C3 – B3 with triads (everything in one octave), then 13th chords, Chaotic and + Bass. The bass stays below the chord.
 - [ ] **Keywise Melody's Lowest and Highest dials keep the melody (and its fills) in the window**
+- [ ] **Keywise Bass's Lowest and Highest dials keep the bass in the window**  
+  Default C0 – B2 (roots on C1). Try C1 – B1: walk-up fills come into the root from above.
 
 ## Keywise Keys
 

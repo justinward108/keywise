@@ -282,6 +282,45 @@ function FakeLiveAPI(callback, path) {
     console.log("random ok   e.g.", c.readoutText(c.state, null));
 }
 
+// ─── Lock: rerolling keeps locked chords and works around them ─────────────────
+{
+    const c = load("Generate", "keywise_chords.js");
+    c.onOutlet = (a) => { if (a[0] === 2 && ["slot", "slottype", "slotlen", "slotinv"].includes(a[1])) c[a[1]](a[2], a[3]); };
+    c.loaded();
+    // Chord 2 = V, as a 7th, 1/2 bar, 1st inversion, locked.
+    c.slot(1, 5); c.slottype(1, 2); c.slotlen(1, 3); c.slotinv(1, 2); c.slotlock(1, 1);
+    assert(c.readoutText(c.state, null).includes("1 locked"));
+    c.randcount(6); c.randlen(4);
+    const seen = new Set();
+    for (let seed = 1; seed <= 60; seed++) {
+        c.randseed(seed); c.randomchords(1);
+        eq([c.state.slots[1], c.state.slotTypes[1], c.state.slotLens[1], c.state.slotInvs[1]], [5, 2, 3, 2]);   // kept
+        assert(c.state.slots[0] !== 5 && c.state.slots[2] !== 5, "repeat next to a locked chord");
+        eq(c.state.slots.filter((x) => x).length, 6);
+        seen.add(c.state.slots.slice(2, 6).join());
+    }
+    assert(seen.size > 10, "the unlocked chords should vary");
+
+    // Random Lengths with a lock: the locked chord keeps its 2 bars, the rest fill exactly to 8 bars.
+    c.randseed(0); c.randcount(4); c.randomchords(1);
+    c.slotlen(1, 7);                                            // locked chord now 2 bars
+    c.randbars(3);                                              // 8 bars
+    for (let seed = 1; seed <= 30; seed++) {
+        c.randseed(seed); c.randomlengths(1);
+        eq(c.state.slots[1], 5); eq(c.state.slotLens[1], 7);
+        const n = c.state.slots.filter((x) => x).length;
+        eq(n, 4);                                               // keeps its 4 slots
+        eq([0, 1, 2, 3].reduce((a, i) => a + (c.SLOT_LENGTHS[c.state.slotLens[i]] || 4), 0), 32);
+    }
+    c.randbars(0);                                              // 1 bar: the locked 2 bars don't fit
+    const before = c.state.slots.slice();
+    c.randomlengths(1);
+    eq(c.state.slots, before);                                  // nothing changed...
+    c.slotlock(1, 0);
+    assert(!c.readoutText(c.state, null).includes("locked"));
+    console.log("lock ok     unlocked variations seen:", seen.size);
+}
+
 // ─── Register: chords and melodies stay between Lowest and Highest octave ─────
 {
     const c = load("Generate", "keywise_chords.js");
@@ -321,7 +360,15 @@ function FakeLiveAPI(callback, path) {
         m.transform(m.state, chordClip, { time_selection: { start_time: 0, end_time: 16 } })
             .forEach((n) => assert(n.pitch >= low && n.pitch <= high, `melody note ${n.pitch} outside ${low}-${high}`));
     }
-    console.log("register ok", checked, "chords checked,", fitted, "fully inside their window");
+    // Bass: a one-octave window (C1-B1) keeps every note in it; walk-ups come in from above.
+    const b = load("Generate", "keywise_lines.js", ["bass"]);
+    b.state.source = 1; b.state.bassLow = 1; b.state.bassHigh = 1;
+    for (let pat = 0; pat < 7; pat++) for (let fill = 0; fill < 6; fill++) {
+        b.state.pattern = pat; b.state.fillType = fill;
+        b.transform(b.state, chordClip, { time_selection: { start_time: 0, end_time: 16 } })
+            .forEach((n) => assert(n.pitch >= 36 && n.pitch <= 47, `bass ${n.pitch} outside C1-B1`));
+    }
+    console.log("register ok", checked, "chords checked,", fitted, "fully inside their window; bass window ok");
 }
 
 // ─── Fills ───────────────────────────────────────────────────────────────────

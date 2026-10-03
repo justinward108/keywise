@@ -140,8 +140,8 @@ def build_chords():
               "Each press adds one more copy of your chords (with their type, length and inversion) "
               "after the last one: 4 -> 8 -> 12 -> 16. Then change a copy, e.g. a fill at the end.")
 
-    # Each chord slot is a column of four menus: chord, type, length,
-    # inversion. Four columns per page, four pages for 16 chords.
+    # Each chord slot is a column: chord, type, length, inversion menus and a
+    # Lock button. Four columns per page, four pages for 16 chords.
     for first in range(0, NUM_SLOTS, 4):
         ui.page(f"{first + 1}-{first + 4}")
         for k in range(4):
@@ -164,8 +164,9 @@ def build_chords():
             ]
             for field, menu in column:
                 p.connect(routers[field], menu, i, 0)
-        ui.label("chord · type · length · inversion", [0, 96, TOOL_W, 14],
-                 name=f"Caption_{first + 1}")
+            ui.toggle(f"Lock {i + 1}", "Lock", 0, [x, 94, 36, 16], f"slotlock {i}",
+                      f"Lock chord {i + 1}: the Random buttons (Rand tab) keep its chord, type, length and "
+                      "inversion, and reroll only the unlocked chords around it.")
 
     ui.page("Feel")
     ui.menu("Style", "Style", STYLES, 0, [0, 18, 76, 16], "style",
@@ -255,15 +256,15 @@ def build_lines(mode):
                 "Held: root for the whole chord. Pulse: repeated root. Root-Fifth / Octaves: alternate. "
                 "Walking: steps towards the next chord. Syncopated: 3+3+2 groove. Push: hits the next root early.")
         ui.menu("Rate", "Rate", BASS_RATES, 1, [102, 0, 50, 16], "rate", "Step length of the pattern.")
-        ui.numbox("Octave", "Oct", 0, 3, 1, [0, 19, 48, 16], "octave",
-                  "Bass octave (Live naming: C1 = MIDI 36).", "Oct %d")
-        ui.numbox("Gate", "Gate", 10, 100, 90, [50, 19, 48, 16], "gate",
+        ui.numbox("Gate", "Gate", 10, 100, 90, [0, 19, 74, 16], "gate",
                   "How long each note lasts, as % of its step. Lower = punchier.", "Gate %d")
-        ui.numbox("Velocity", "Vel", 1, 127, 100, [100, 19, 52, 16], "velocity", "Note velocity.", "Vel %d")
+        ui.numbox("Velocity", "Vel", 1, 127, 100, [78, 19, 74, 16], "velocity", "Note velocity.", "Vel %d")
         source_row(ui, 38)
         fill_row(ui, BASS_FILLS, 57,
                  "A fill for the last 2 beats of each phrase. Walk-up / Run Down: four 8ths stepping into the "
                  "next root. Octaves: octave bounce. Push: the next root an 8th early. Drop Out: silence.")
+        octave_dials(ui, 0, 81, 0, 2, "the bass (roots sit one octave above Lowest when the window "
+                     "spans 3+ octaves, leaving room for walk-ups)")
         top = 78
         description = "Writes a bassline that follows the chords in any clip."
     else:
@@ -284,8 +285,8 @@ def build_lines(mode):
         top = 97
         description = "Writes a melody that follows the chords in any clip."
 
-    # Melody's octave dials sit beside the readout.
-    left = 88 if mode == "melody" else 0
+    # The octave dials sit beside the readout.
+    left = 88
     readout = ui.readout([left, top, TOOL_W - left, TOOL_H - top], linecount=(TOOL_H - top) // 12)
     p.connect(feedback, readout, 0, 0)
     p.add("live.line", [0, 146, TOOL_W, 5.0], numinlets=1, numoutlets=0)
