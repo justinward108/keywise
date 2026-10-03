@@ -69,6 +69,12 @@ var state = {
     randCount: 4,     // Random Chords: how many chords
     randLen: 5,       // Random Chords: each chord's length, index into SLOT_LENGTHS (5 = 1 bar)
     randBars: 2,      // Random Lengths: total length, index into RANDOM_BARS (2 = 4 bars)
+    randMinLen: 3,    // Random Lengths: shortest chord, index into SLOT_LENGTHS (3 = 1/2 bar)
+    randMaxLen: 7,    // Random Lengths: longest chord (7 = 2 bars)
+    randMinCount: 2,  // Random Lengths: fewest chords
+    randMaxCount: 16, // Random Lengths: most chords
+    randVariation: 1, // index into VARIATIONS (1 = Varied)
+    randSeed: 0,      // 0 = a new progression every press
     fillType: 0,      // index into FILLS
     fillEvery: 0,     // index into FILL_EVERY (theory.js)
     slots:    [1, 5, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -338,7 +344,8 @@ function readoutText(st, ctx) {
     var head = NOTES[sc.root % 12] + " " + sc.name;
     if (!chords.length) return head + ": pick chords above";
     // Kept short: the Generate panel is narrow.
-    return head + ":  " + chords.map(function (c) { return c.name; }).join("  ");
+    return (lastSeed ? "Seed " + lastSeed + " · " : "") + head + ":  " +
+        chords.map(function (c) { return c.name; }).join("  ");
 }
 
 // ─── MAX GLUE ────────────────────────────────────────────────────────────────
@@ -349,6 +356,7 @@ var regenerate = (typeof Task !== "undefined") ?
     new Task(function () { outlet(1, "bang"); }) : null;
 
 function changed() {
+    if (!writingRandom) lastSeed = 0;   // the progression no longer matches the seed
     outlet(2, "readout", "set", readoutText(state, context));
     if (ready && regenerate) {
         regenerate.cancel();
@@ -412,77 +420,175 @@ function preset(v) {
 }
 
 // ─── RANDOM PROGRESSIONS ─────────────────────────────────────────────────────
-// Random, but following the habits of most songs so the result is musical:
-// start on I, prefer the common chords (I, IV, V, vi), never the same chord
-// twice in a row, and often end on V or IV so the progression wants to loop.
+// Two generators (Rand tab) that write into the chord slots:
+//   Random Chords:  a set number of chords, all the same length
+//   Random Lengths: a total length split into a random number of chords of
+//                   random lengths, within shortest/longest and fewest/most
+// Both follow the same harmony rules, so the results sound like songs:
+//   - start on I, never the same chord twice in a row
+//   - pick each next chord by how naturally the root moves (works in any mode):
+//       down a fifth (V-I, ii-V, vi-ii)   strongest
+//       down a third (I-vi, vi-IV)         strong
+//       up a step / up a fifth (IV-V, IV-I) medium
+//       down a step / up a third (V-IV)    weak
+//   - no ping-ponging between two chords (A B A B); going straight back to
+//     the chord before last is allowed but discouraged
+//   - diminished chords are rare (none in Conservative), only where they
+//     resolve (up a step or down a fifth), never at the end
+//   - end on a chord that leads home: V, IV, or a major bVII (as in Dorian,
+//     Mixolydian, minor), so the loop pulls back to I
+//   - chord changes on beats 1 and 3 (Random Lengths)
+// Variation sets how far it wanders: Conservative keeps to I, IV, V and vi;
+// Varied uses every chord, favouring the common ones; Chaotic treats all
+// chords and moves alike and also randomizes chord types and inversions.
+// A Seed makes the result repeatable: 0 = a new one every press, and the
+// seed used is shown in the readout so a good result can be brought back.
 
-// How likely each scale degree is (7-note scales). Scales with fewer notes
-// treat every degree equally.
-var DEGREE_WEIGHTS = { 1: 3, 2: 2, 3: 1, 4: 3, 5: 3, 6: 3, 7: 0.5 };
+var VARIATIONS = ["Conservative", "Varied", "Chaotic"];   // order must match build_devices.py
+
+// Root motion in scale steps up (0-6) -> how natural it sounds.
+var ROOT_MOTION = { 3: 4, 5: 3, 1: 2, 4: 2, 6: 1, 2: 1 };
+
+// How much each scale degree is wanted, per variation (7-note scales).
+var DEGREE_PREFERENCE = {
+    Conservative: { 1: 3, 4: 3, 5: 3, 6: 2 },
+    Varied:       { 1: 3, 2: 2, 3: 1, 4: 3, 5: 3, 6: 3, 7: 1 },
+    Chaotic:      { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1 }
+};
 
 function weightedPick(options, weights, rand) {
     var total = 0;
-    options.forEach(function (o) { total += weights[o] || 1; });
+    options.forEach(function (o) { total += weights[o]; });
     var r = rand() * total;
     for (var i = 0; i < options.length; i++) {
-        r -= weights[options[i]] || 1;
+        r -= weights[options[i]];
         if (r < 0) return options[i];
     }
     return options[options.length - 1];
 }
 
-// n random scale degrees (1-based) for the current scale.
+// Triad quality of each degree in the current scale: "dim", "maj", "min"...
+function degreeQualities(st, ctx) {
+    var iv = currentScale(st, ctx).intervals;
+    var q = {};
+    for (var d = 1; d <= iv.length; d++) {
+        var shape = chordShape(iv, d - 1, 0);
+        var third = shape[1] % 12, fifth = shape[2] % 12;
+        q[d] = third === 3 && fifth === 6 ? "dim" : third === 4 && fifth === 7 ? "maj" :
+               third === 3 && fifth === 7 ? "min" : "other";
+    }
+    return q;
+}
+
+// n random scale degrees (1-based) following the harmony rules above.
 function randomDegrees(st, ctx, n, rand) {
     var len = currentScale(st, ctx).intervals.length;
-    var weights = len === 7 ? DEGREE_WEIGHTS : {};
+    var variation = VARIATIONS[st.randVariation] || "Varied";
     var degrees = [1];
+    if (len !== 7) {
+        // Pentatonic, blues, whole tone...: no functional harmony, just no repeats.
+        for (var i = 1; i < n; i++) {
+            var opts = [];
+            for (var d = 1; d <= len; d++) if (d !== degrees[i - 1] && !(i === n - 1 && d === 1)) opts.push(d);
+            degrees.push(opts[Math.floor(rand() * opts.length)] || 1);
+        }
+        return degrees.slice(0, n);
+    }
+
+    var quality = degreeQualities(st, ctx);
+    var prefer = DEGREE_PREFERENCE[variation];
+    var chaotic = variation === "Chaotic";
+    var motion = function (from, to) { return ROOT_MOTION[((to - from) % 7 + 7) % 7] || 0; };
+    // Chords that lead home at the end of a loop.
+    var cadence = [5, 4, 7].filter(function (d) { return quality[d] === "maj" && prefer[d]; });
+    if (!cadence.length) cadence = [5, 4];
+
     for (var i = 1; i < n; i++) {
         var prev = degrees[i - 1];
-        var options = [];
-        for (var d = 1; d <= len; d++) if (d !== prev) options.push(d);
-        if (i === n - 1 && n >= 3 && len === 7 && rand() < 0.6) {
-            // a cadence: end on V or IV (whichever isn't the previous chord)
-            options = [5, 4].filter(function (d) { return d !== prev; });
+        var last = i === n - 1;
+        var weights = {}, options = [];
+        for (var d = 1; d <= 7; d++) {
+            if (d === prev || !prefer[d]) continue;
+            if (!chaotic) {
+                if (variation === "Conservative" && quality[d] === "dim") continue;
+                if (!last && i >= 3 && d === degrees[i - 2] && prev === degrees[i - 3]) continue;   // A B A B (the ending wins)
+                // a diminished chord must resolve: up a step or down a fifth
+                if (quality[prev] === "dim" && d !== prev % 7 + 1 && d !== (prev + 2) % 7 + 1) continue;
+                if (quality[d] === "dim" && (last || i === n - 2)) continue;
+                if (last && cadence.indexOf(d) < 0) continue;
+                // leave an ending chord available for the last slot
+                if (i === n - 2 && cadence.length === 1 && cadence[0] === d) continue;
+            }
+            var w = prefer[d] * (chaotic ? 1 : motion(prev, d));
+            if (!chaotic && quality[d] === "dim") w *= 0.15;                  // rare
+            if (!chaotic && i >= 2 && d === degrees[i - 2]) w *= 0.3;        // straight back: discouraged
+            if (w > 0) { weights[d] = w; options.push(d); }
+        }
+        if (!options.length) {                    // nothing fits the rules: any other chord
+            for (var e = 1; e <= 7; e++) if (e !== prev) { weights[e] = 1; options.push(e); }
         }
         degrees.push(weightedPick(options, weights, rand));
     }
     return degrees.slice(0, n);
 }
 
-// Fewest chords of 2, 4 or 8 beats that add up to `beats` (an even number).
-function fewestChords(beats) {
-    var rest = beats % 8;
-    return Math.floor(beats / 8) + (rest === 0 ? 0 : rest === 6 ? 2 : 1);
-}
+// Chord lengths (in beats) adding up to exactly totalBeats, each between
+// minBeats and maxBeats, with between minCount and maxCount chords (16 at
+// most). Unless chaotic, chords change only on beats 1 and 3, so only
+// lengths of whole half-bars are used. Returns null if it can't be done.
+function randomLengths(totalBeats, rand, opts) {
+    opts = opts || {};
+    var minB = opts.minBeats || 2, maxB = opts.maxBeats || 8;
+    var minC = Math.max(1, opts.minCount || 1), maxC = Math.min(NUM_SLOTS, opts.maxCount || NUM_SLOTS);
+    var sizes = SLOT_LENGTHS.filter(function (b) { return b > 0 && b >= minB - 1e-6 && b <= maxB + 1e-6; });
+    if (!opts.chaotic) {
+        var onBeats = sizes.filter(function (b) { return b % 2 === 0; });
+        if (onBeats.length) sizes = onBeats;
+    }
+    // Work in half-beats. can[k][u]: u half-beats can be made from exactly k chords.
+    var units = Math.round(totalBeats * 2);
+    var parts = sizes.map(function (b) { return Math.round(b * 2); });
+    var can = [[true]];
+    for (var u = 1; u <= units; u++) can[0][u] = false;
+    for (var k = 1; k <= maxC; k++) {
+        can[k] = [];
+        for (u = 0; u <= units; u++) {
+            can[k][u] = parts.some(function (p) { return p <= u && can[k - 1][u - p]; });
+        }
+    }
+    var counts = [];
+    for (k = minC; k <= maxC; k++) if (can[k][units]) counts.push(k);
+    if (!counts.length) return null;
 
-// Split totalBeats into chord lengths of half a bar, 1 bar or 2 bars (mostly
-// 1 bar), using no more than the 16 slots. Each choice leaves a remainder that
-// can still be filled with the slots that are left.
-function randomLengths(totalBeats, rand) {
-    var lengths = [];
-    var left = totalBeats;
-    while (left > 1e-6) {
-        var slotsLeft = NUM_SLOTS - lengths.length - 1;
-        var options = [2, 4, 8].filter(function (b) {
-            return b <= left + 1e-6 && fewestChords(left - b) <= slotsLeft;
+    var count = counts[Math.floor(rand() * counts.length)];
+    var lengths = [], left = units;
+    var likes = { 8: 3, 16: 2, 4: 2 };          // 1 bar is the most common chord length
+    for (var c = count; c > 0; c--) {
+        var weights = {}, options = [];
+        parts.forEach(function (p) {
+            if (p <= left && can[c - 1][left - p]) { options.push(p); weights[p] = likes[p] || 1; }
         });
-        if (!options.length) options = [left];
-        lengths.push(weightedPick(options, { 2: 1, 4: 2, 8: 1 }, rand));
-        left -= lengths[lengths.length - 1];
+        var pick = weightedPick(options, weights, rand);
+        lengths.push(pick / 2);
+        left -= pick;
     }
     return lengths;
 }
 
-// Put a progression on the slot menus (like a preset): degrees with their
-// lengths (SLOT_LENGTHS indexes), types and inversions back to "=".
-function writeProgression(degrees, lengthIndexes) {
+// Put a progression on the slot menus (like a preset): degrees, lengths
+// (SLOT_LENGTHS indexes), and optionally types and inversions (slot menu
+// values; 0 = "=").
+function writeProgression(degrees, lengthIndexes, types, inversions) {
     dupBlock = 0;
+    writingRandom = 1;
     for (var i = 0; i < NUM_SLOTS; i++) {
-        outlet(2, "slot", i, degrees[i] || 0);
-        outlet(2, "slottype", i, 0);
-        outlet(2, "slotlen", i, i < degrees.length ? lengthIndexes[i] : 0);
-        outlet(2, "slotinv", i, 0);
+        var used = i < degrees.length;
+        outlet(2, "slot", i, used ? degrees[i] : 0);
+        outlet(2, "slottype", i, used && types ? types[i] : 0);
+        outlet(2, "slotlen", i, used ? lengthIndexes[i] : 0);
+        outlet(2, "slotinv", i, used && inversions ? inversions[i] : 0);
     }
+    writingRandom = 0;
 }
 
 function beatsToSlotLength(beats) {
@@ -490,27 +596,71 @@ function beatsToSlotLength(beats) {
     return i > 0 ? i : 0;
 }
 
+// Chaotic also randomizes chord types (7th, 9th, sus2, sus4, add9 or the
+// Key tab's type) and inversions, as slot menu values.
+var CHAOS_TYPES = ["7th", "9th", "sus2", "sus4", "add9"];
+function chaosColours(n, rand) {
+    var types = [], invs = [];
+    for (var i = 0; i < n; i++) {
+        types.push(rand() < 0.5 ? 0 : typeIndex(CHAOS_TYPES[Math.floor(rand() * CHAOS_TYPES.length)]) + 1);
+        invs.push(rand() < 0.5 ? 0 : 2 + Math.floor(rand() * 2));     // 1st or 2nd inversion
+    }
+    return { types: types, invs: invs };
+}
+
+var lastSeed = 0;       // seed of the last random progression, shown in the readout
+var writingRandom = 0;  // 1 while a random progression is being written
+
+// The random generator for one press: the chosen Seed, or a new one.
+function seededForPress() {
+    lastSeed = state.randSeed > 0 ? state.randSeed : 1 + Math.floor(Math.random() * 9999);
+    return seededRandom(lastSeed);
+}
+
+function finishRandom(degrees, lengthIndexes, rand) {
+    var chaos = VARIATIONS[state.randVariation] === "Chaotic" ? chaosColours(degrees.length, rand) : null;
+    writeProgression(degrees, lengthIndexes, chaos && chaos.types, chaos && chaos.invs);
+    outlet(2, "readout", "set", readoutText(state, context));
+}
+
 // Random Chords button: randCount chords, each randLen long.
 function randomchords(v) {
     if (!ready || v === 0) return;
+    var rand = seededForPress();
     var n = Math.max(1, Math.min(NUM_SLOTS, state.randCount));
     var lens = [];
     for (var i = 0; i < n; i++) lens.push(state.randLen);
-    writeProgression(randomDegrees(state, context, n, Math.random), lens);
+    finishRandom(randomDegrees(state, context, n, rand), lens, rand);
 }
 
-// Random Lengths button: a random number of chords, random lengths, adding
-// up to randBars bars.
+// Random Lengths button: a random number of chords with random lengths,
+// adding up to randBars bars, within the shortest/longest and fewest/most limits.
 function randomlengths(v) {
     if (!ready || v === 0) return;
-    var lengths = randomLengths(RANDOM_BARS[state.randBars] * 4, Math.random);
-    writeProgression(randomDegrees(state, context, lengths.length, Math.random),
-                     lengths.map(beatsToSlotLength));
+    var rand = seededForPress();
+    var lengths = randomLengths(RANDOM_BARS[state.randBars] * 4, rand, {
+        minBeats: SLOT_LENGTHS[state.randMinLen], maxBeats: SLOT_LENGTHS[state.randMaxLen],
+        minCount: state.randMinCount, maxCount: state.randMaxCount,
+        chaotic: VARIATIONS[state.randVariation] === "Chaotic"
+    });
+    if (!lengths) {
+        lastSeed = 0;
+        outlet(2, "readout", "set", "Can't fill " + RANDOM_BARS[state.randBars] +
+            " bars with those limits. Widen the shortest/longest chord or the fewest/most chords.");
+        return;
+    }
+    finishRandom(randomDegrees(state, context, lengths.length, rand), lengths.map(beatsToSlotLength), rand);
 }
 
-function randcount(v) { state.randCount = v | 0; }
-function randlen(v)   { state.randLen = (v | 0) + 1; }   // menu has no "Len=" entry
-function randbars(v)  { state.randBars = v | 0; }
+function randcount(v)     { state.randCount = v | 0; }
+function randlen(v)       { state.randLen = (v | 0) + 1; }      // menus have no "Len=" entry
+function randbars(v)      { state.randBars = v | 0; }
+function randminlen(v)    { state.randMinLen = (v | 0) + 1; }
+function randmaxlen(v)    { state.randMaxLen = (v | 0) + 1; }
+function randmincount(v)  { state.randMinCount = v | 0; }
+function randmaxcount(v)  { state.randMaxCount = v | 0; }
+function randvariation(v) { state.randVariation = v | 0; }
+function randseed(v)      { state.randSeed = Math.max(0, v | 0); }
 
 // Duplicate: each press adds one more copy of your original chords after
 // the last filled slot, so 4 chords go 4 -> 8 -> 12 -> 16 (play a phrase

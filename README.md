@@ -111,7 +111,7 @@ Hover over any control and Live's **Info View** (bottom left) explains what it d
 - After the first **Generate**, every change on the device rewrites the clip straight away.
 - The readout at the bottom shows the key and the chord names, e.g. `C Major: C G Am F`.
 
-The device has six tabs: **Key · 1-4 · 5-8 · 9-12 · 13-16 · Feel**.
+The device has seven tabs: **Key · 1-4 · 5-8 · 9-12 · 13-16 · Feel · Rand**.
 
 ### Key tab
 
@@ -202,26 +202,49 @@ If all 16 slots are used, or no chords are filled in, it does nothing and says w
 | **Vel** | 1 – 127 | Note velocity. Default: 100. |
 | **Fill** | No Fill, Turnaround, Dominant, Sus, Walk-up, Push, Break | A chord fill in the last bar of each phrase. See [Fills](#fills). |
 | **Every** | Each Pass, End of Clip, Every 4 Bars, Every 8 Bars | Where the fills go. |
-| **Chords**, length, **Random** | 1 – 16 chords; 1/8 bar – 4 bars; button | Random Chords: a random progression with that many chords of that length. See [Random progressions](#random-progressions). |
-| Total length, **Random Lengths** | 1, 2, 4, 8, 16 bars; button | Random Lengths: a random progression exactly that long, with a random number of chords of random lengths. |
 
 ### Random progressions
 
-Two buttons at the bottom of the Feel tab make a random progression in your key and mode:
+The **Rand** tab makes random progressions in your key and mode. They go into the chord slots, just
+like a preset, so you can see them on the 1-4 … 13-16 tabs and change any chord you don't like.
+Press again for a different one; hit it until something catches your ear, then edit that.
 
-- **Random Chords**: set how many chords (1–16) and how long each one is, then press **Random**.
-- **Random Lengths**: set how long the whole progression is (1, 2, 4, 8 or 16 bars), then press
-  **Random Lengths**. You get a random number of chords, each half a bar, 1 bar or 2 bars long
-  (mostly 1 bar), adding up to exactly that length.
+| Control | Options | What it does |
+|---|---|---|
+| **chords**, length, **Random** | 1 – 16 chords; 1/8 bar – 4 bars; button | **Random Chords**: a progression with that many chords, all that long. |
+| total length, **Random Lengths** | 1, 2, 4, 8, 16 bars; button | **Random Lengths**: a progression exactly that long, with a random number of chords of random lengths. |
+| **Min / Max** (length) | 1/8 bar – 4 bars | Random Lengths: the shortest and longest a chord can be. Default ½ bar – 2 bars. |
+| **Min / Max chords** | 1 – 16 | Random Lengths: the fewest and most chords. Default 2 – 16. |
+| **Variation** | Conservative, Varied, Chaotic | How far the chords wander (see below). Default Varied. |
+| **Seed** | 0 – 9999 | 0: a new progression every press. Any other number always gives the same progression. |
 
-"Random" follows the habits of most songs, so the results sound musical rather than like noise:
-they start on **I** (the home chord), favour the common chords (**I, IV, V, vi**), never play the
-same chord twice in a row, and often end on **V** or **IV** so the progression wants to loop back
-round.
+**Variation:**
 
-The result goes into the chord slots, just like a preset, so you can see it on the 1-4 … 13-16 tabs
-and change any chord you don't like. Press again for a different one. Each chord's type and
-inversion reset to "=" (following the Key tab).
+- **Conservative**: only the home-base chords (I, IV, V, vi in a major key) and no diminished chords.
+  Safe, poppy, singable.
+- **Varied**: every chord in the key, favouring the common ones and the most natural chord moves.
+- **Chaotic**: any chord can follow any other, and chords also get random types (7th, 9th, sus2,
+  sus4, add9) and inversions. Chord changes can land off the beat. For surprises.
+
+**Getting a great one back (Seed).** Every random progression shows its seed in the readout, e.g.
+`Seed 4821 · C Major: C Am F G`. If you like it, type **4821** into **Seed**. Pressing the button
+then gives exactly that progression again (with the same key, scale and settings), even after you've
+tried others. Set Seed back to **0** for new ones. The seed disappears from the readout once you
+change the progression yourself.
+
+**Why it sounds like music (Conservative and Varied).** Random here follows the rules of thumb most
+songs follow, in any key or mode:
+
+- It starts on **I**, the home chord, and never plays the same chord twice in a row.
+- Each next chord is picked by how naturally the music moves there. Moving **down a fifth** is the
+  strongest (V → I, ii → V, vi → ii), then **down a third** (I → vi, vi → IV), then **a step up**
+  or **up a fifth** (IV → V, IV → I); **a step down** (V → IV) is the rarest.
+- No ping-ponging between two chords (C G C G).
+- **Diminished** chords (like B° in C major) are rare, only appear where they resolve naturally,
+  and never at the end.
+- It **ends on a chord that leads home**: V or IV, or ♭VII in keys that have it (like G in A minor),
+  so the progression wants to loop back round to I.
+- **Random Lengths** changes chords only on **beats 1 and 3**, the strong beats.
 
 ### Fills
 

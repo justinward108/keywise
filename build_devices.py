@@ -81,6 +81,7 @@ RATES = ["1/64", "1/32", "1/16", "1/8", "1/4", "1/16T", "1/8T"]
 RANDOM_LENGTHS = ["1/8 bar", "1/4 bar", "1/2 bar", "3/4 bar", "1 bar", "1.5 bars", "2 bars",
                   "3 bars", "4 bars"]                  # SLOT_LENGTHS without "Len="
 RANDOM_BARS = ["1 bar", "2 bars", "4 bars", "8 bars", "16 bars"]  # src/chords.js RANDOM_BARS
+VARIATIONS = ["Conservative", "Varied", "Chaotic"]                 # src/chords.js VARIATIONS
 CHORD_FILLS = ["No Fill", "Turnaround", "Dominant", "Sus", "Walk-up", "Push", "Break"]  # src/chords.js FILLS
 PRESETS = ["Presets…", "I V vi IV", "I vi IV V", "vi IV I V", "ii V I", "vi ii V I",
            "I IV V IV", "i VI III VII", "i iv v", "i VII VI V", "Canon (8)",
@@ -169,24 +170,39 @@ def build_chords():
              "A fill for the last bar of each phrase, leading into the next chord. Turnaround: ii then V7. "
              "Dominant: V7. Sus: Vsus4 then V. Walk-up: two chords stepping up. Push: the next chord an 8th early. "
              "Break: two stabs, then silence.")
-    # Random progressions: written into the chord slots, so they can be edited.
-    ui.numbox("Random Count", "RndN", 1, 16, 4, [0, 75, 46, 16], "randcount",
+
+    # Rand tab: random progressions, written into the chord slots so they can be edited.
+    ui.page("Rand")
+    ui.numbox("Random Count", "RndN", 1, 16, 4, [0, 18, 46, 16], "randcount",
               "Random Chords: how many chords to make.", "%d chords")
-    ui.menu("Random Length", "RndLen", RANDOM_LENGTHS, 4, [48, 75, 52, 16], "randlen",
+    ui.menu("Random Length", "RndLen", RANDOM_LENGTHS, 4, [48, 18, 52, 16], "randlen",
             "Random Chords: how long each chord is.")
-    ui.button("Random Chords", "Random", [102, 75, 50, 16], "randomchords",
-              "Makes a random progression with this many chords of this length, in your key and mode: "
-              "starts on I, favours I, IV, V and vi, never repeats a chord twice in a row. "
-              "It goes into the chord slots, so you can edit it.")
-    ui.menu("Random Bars", "RndBars", RANDOM_BARS, 2, [0, 94, 52, 16], "randbars",
+    ui.button("Random Chords", "Random", [102, 18, 50, 16], "randomchords",
+              "Makes a random progression with this many chords of this length, in your key and mode, "
+              "following the harmony rules (see Variation). It goes into the chord slots, so you can edit it.")
+    ui.menu("Random Bars", "RndBars", RANDOM_BARS, 2, [0, 37, 52, 16], "randbars",
             "Random Lengths: how long the whole progression is.")
-    ui.button("Random Lengths", "Random Lengths", [54, 94, 98, 16], "randomlengths",
-              "Makes a random progression exactly this long, with a random number of chords of random "
-              "lengths (half a bar, 1 bar or 2 bars). It goes into the chord slots, so you can edit it.")
+    ui.button("Random Lengths", "Random Lengths", [54, 37, 98, 16], "randomlengths",
+              "Makes a random progression exactly this long, with a random number of chords of random lengths "
+              "within the limits below. Chords change on beats 1 and 3 (except Chaotic).")
+    ui.menu("Random Shortest", "RndMin", [f"Min {x}" for x in RANDOM_LENGTHS], 2, [0, 56, 74, 16], "randminlen",
+            "Random Lengths: the shortest a chord can be.")
+    ui.menu("Random Longest", "RndMax", [f"Max {x}" for x in RANDOM_LENGTHS], 6, [78, 56, 74, 16], "randmaxlen",
+            "Random Lengths: the longest a chord can be.")
+    ui.numbox("Random Fewest", "RndFew", 1, 16, 2, [0, 75, 74, 16], "randmincount",
+              "Random Lengths: the fewest chords.", "Min %d chords")
+    ui.numbox("Random Most", "RndMost", 1, 16, 16, [78, 75, 74, 16], "randmaxcount",
+              "Random Lengths: the most chords.", "Max %d chords")
+    ui.menu("Variation", "Var", VARIATIONS, 1, [0, 94, 74, 16], "randvariation",
+            "How far the random chords wander. Conservative: only I, IV, V, vi. Varied: every chord, favouring "
+            "the common ones and natural chord moves. Chaotic: anything goes, plus random chord types and inversions.")
+    ui.numbox("Seed", "Seed", 0, 9999, 0, [78, 94, 74, 16], "randseed",
+              "0: a new progression every press. The readout shows each result's seed: type it here to get "
+              "that exact progression back (with the same settings).", "Seed %d")
 
     readout = ui.readout([0, 116, TOOL_W, 30])
     p.connect(feedback, readout, 0, 0)
-    ui.finish_pages([0, 0, TOOL_W, 14], fontsize=8.0)  # 6 tabs share 152 px
+    ui.finish_pages([0, 0, TOOL_W, 14], fontsize=7.0)  # 7 tabs share 152 px
     p.add("live.line", [0, 146, TOOL_W, 5.0], numinlets=1, numoutlets=0)
     return p.to_json("generator", TOOL_W, TOOL_H,
                      "Chord progressions from any key and mode, written into the clip.")

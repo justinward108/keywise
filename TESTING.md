@@ -48,7 +48,7 @@ Everything to check in Ableton Live before releasing Keywise. Riskiest first. Re
 
 ## Keywise Chords
 
-- [ ] **All 6 tabs switch pages, and the "13-16" tab label is readable**
+- [ ] **All 7 tabs switch pages, and the "13-16" tab label is readable**
 - [ ] **The per-chord Type, Len and Inv menus each change only their own chord**  
   And Type=, Len=, Inv= follow the Key tab.
 - [ ] **Duplicate Chords goes 4 → 8 → 12 → 16**  
@@ -60,14 +60,21 @@ Everything to check in Ableton Live before releasing Keywise. Riskiest first. Re
   Select from bar 2 and press Generate. If they start at bar 1, tell Claude.
 - [ ] **The readout at the bottom isn't cut off with long progressions**
 
-## Random progressions (Keywise Chords, Feel tab)
+## Random progressions (Keywise Chords, Rand tab)
 
+- [ ] **The 7 tabs (Key … Feel, Rand) are all readable and switch pages**
 - [ ] **Random Chords: set 6 chords, 1/2 bar each, press Random**  
   Six half-bar chords appear in the slots, starting on I. Press again for a different one.
 - [ ] **Random Lengths: set 8 bars, press Random Lengths**  
-  A random number of chords that add up to exactly 8 bars.
+  A random number of chords that add up to exactly 8 bars, changing on beats 1 and 3.
+- [ ] **Min/Max length and Min/Max chords are respected**  
+  Try Min 1 bar, Max 1 bar with 8 bars: exactly 8 one-bar chords. Impossible limits show a message.
+- [ ] **Conservative, Varied and Chaotic sound different**  
+  Conservative stays on I, IV, V, vi; Chaotic adds odd chords, chord types and inversions.
 - [ ] **The results sound musical in a few keys and modes**  
-  Try a major key, a minor key and Dorian.
+  Try a major key, a minor key and Dorian, with Conservative and Varied.
+- [ ] **Seed brings a progression back**  
+  Note the seed in the readout, try a few others, type the seed in: the same progression returns.
 - [ ] **You can edit the chords afterwards on the 1-4 … 13-16 tabs**
 
 ## Keywise Keys

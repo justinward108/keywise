@@ -208,39 +208,77 @@ function FakeLiveAPI(callback, path) {
 // ─── Random progressions ─────────────────────────────────────────────────────
 {
     const c = load("Generate", "keywise_chords.js");
-    for (let seed = 1; seed <= 200; seed++) {
-        const rand = c.seededRandom(seed);
-        const n = 1 + (seed % 16);
-        const d = Array.from(c.randomDegrees(c.state, null, n, rand));
-        assert.strictEqual(d.length, n);
-        assert.strictEqual(d[0], 1);                                       // starts on I
-        assert(d.every((x) => x >= 1 && x <= 7));
-        assert(d.every((x, i) => i === 0 || x !== d[i - 1]), "repeat: " + d);   // never twice in a row
-
-        const bars = [1, 2, 4, 8, 16][seed % 5];
-        const lens = Array.from(c.randomLengths(bars * 4, rand));
-        assert.strictEqual(lens.reduce((a, b) => a + b, 0), bars * 4);   // adds up exactly
-        assert(lens.length <= 16 && lens.every((b) => [2, 4, 8].includes(b)), "lengths: " + lens);
+    const degrees = (variation, n, seed) => { c.state.randVariation = variation;
+        return Array.from(c.randomDegrees(c.state, null, n, c.seededRandom(seed))); };
+    let fifthDown = 0, stepDown = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+        const n = 2 + (seed % 15);
+        for (const v of [0, 1]) {                                   // Conservative, Varied (C major)
+            const d = degrees(v, n, seed);
+            assert.strictEqual(d.length, n);
+            assert.strictEqual(d[0], 1);                                         // starts on I
+            assert(d.every((x, i) => i === 0 || x !== d[i - 1]), "repeat " + d); // no repeats
+            assert([4, 5].includes(d[n - 1]), "ending " + d);                    // ends on IV or V
+            d.forEach((x, i) => {
+                if (x === 7) {                                                   // vii° resolves...
+                    assert(i < n - 2, "vii° too late " + d);
+                    assert([1, 3].includes(d[i + 1]), "vii° unresolved " + d);  // ...up a step or down a 5th
+                }
+                if (i && i < n - 1 && d[i - 1] === 5 && x === 1) fifthDown++;   // moves before the ending,
+                if (i && i < n - 1 && d[i - 1] === 5 && x === 4) stepDown++;    // where only the weights decide
+            });
+            if (v === 0) assert(d.every((x) => [1, 4, 5, 6].includes(x)), "conservative " + d);
+            d.forEach((x, i) => assert(i === n - 1 || !(i >= 3 && x === d[i - 2] && d[i - 1] === d[i - 3]), "ping-pong " + d));
+        }
+        const chaos = degrees(2, n, seed);
+        assert(chaos.every((x, i) => x >= 1 && x <= 7 && (i === 0 || x !== chaos[i - 1])));
     }
-    // Pentatonic (5 notes): degrees stay inside the scale.
-    c.state.scale = 9;
-    assert(Array.from(c.randomDegrees(c.state, null, 16, c.seededRandom(3))).every((x) => x >= 1 && x <= 5));
+    assert(fifthDown > 3 * stepDown, `V->I ${fifthDown} should beat V->IV ${stepDown}`);   // strong moves win
+
+    c.state.root = 9; c.state.scale = 1;                            // A natural minor: ends on major VII (G)
+    for (let seed = 1; seed <= 100; seed++) eq(degrees(1, 6, seed)[5], 7);
+    c.state.root = 0; c.state.scale = 0;
+    c.state.scale = 9;                                              // pentatonic: stays in the scale
+    assert(degrees(1, 16, 3).every((x) => x >= 1 && x <= 5));
     c.state.scale = 0;
 
-    // The buttons write into the slots (wired back like the patch does).
+    // Lengths: exact total, within limits, on beats 1 and 3 unless chaotic.
+    for (let seed = 1; seed <= 200; seed++) {
+        const bars = [1, 2, 4, 8, 16][seed % 5];
+        const lens = Array.from(c.randomLengths(bars * 4, c.seededRandom(seed)));
+        eq(lens.reduce((a, b) => a + b, 0), bars * 4);
+        assert(lens.length <= 16 && lens.every((b) => b >= 2 && b <= 8 && b % 2 === 0), "lengths " + lens);
+    }
+    eq(Array.from(c.randomLengths(32, c.seededRandom(5), { minBeats: 4, maxBeats: 4 })), Array(8).fill(4));
+    const counted = Array.from(c.randomLengths(64, c.seededRandom(9), { minBeats: 2, maxBeats: 8, minCount: 10, maxCount: 12 }));
+    assert(counted.length >= 10 && counted.length <= 12 && counted.reduce((a, b) => a + b, 0) === 64);
+    assert.strictEqual(c.randomLengths(4, c.seededRandom(1), { minBeats: 8, maxBeats: 16 }), null);  // can't fit
+
+    // The buttons, wired back like the patch does in Live.
     c.onOutlet = (a) => { if (a[0] === 2 && ["slot", "slottype", "slotlen", "slotinv"].includes(a[1])) c[a[1]](a[2], a[3]); };
     c.loaded();
-    c.randcount(6); c.randlen(2);           // menu item 2 = "1/2 bar"
-    c.randomchords(1);
-    eq(c.state.slots.filter((x) => x).length, 6);
-    eq(c.state.slotLens.slice(0, 6), [3, 3, 3, 3, 3, 3]);             // SLOT_LENGTHS[3] = 1/2 bar
-    eq(c.state.slots.slice(6), Array(10).fill(0));
-    c.randbars(3);                          // 8 bars
-    c.randomlengths(1);
+    c.state.randVariation = 1;
+    c.randcount(6); c.randlen(2);                                   // 6 chords, "1/2 bar" each
+    c.randseed(1234); c.randomchords(1);
+    const first = c.state.slots.slice();
+    eq(first.filter((x) => x).length, 6);
+    eq(c.state.slotLens.slice(0, 6), [3, 3, 3, 3, 3, 3]);
+    assert(c.readoutText(c.state, null).startsWith("Seed 1234 · C Major:"));
+    c.slot(0, 4); c.randomchords(1);                                // same seed -> same progression
+    eq(c.state.slots, first);
+    c.randseed(0); c.randomchords(1);                               // seed 0: a new one, and its seed is shown...
+    const shown = +c.readoutText(c.state, null).match(/^Seed (\d+)/)[1];
+    const again = c.state.slots.slice();
+    c.randseed(shown); c.randomchords(1);                           // ...which brings it back
+    eq(c.state.slots, again);
+    c.slot(0, 1);                                                   // editing forgets the seed
+    assert(!c.readoutText(c.state, null).startsWith("Seed"));
+
+    c.randbars(3); c.randomlengths(1);                              // 8 bars
     const filled = c.state.slots.filter((x) => x).length;
-    const beats = c.state.slotLens.slice(0, filled).reduce((a, i) => a + c.SLOT_LENGTHS[i], 0);
-    eq(beats, 32);
-    c.randomchords(0);                      // a button release does nothing
+    eq(c.state.slotLens.slice(0, filled).reduce((a, i) => a + c.SLOT_LENGTHS[i], 0), 32);
+    c.randvariation(2); c.randomchords(1);                          // Chaotic colours some chords
+    c.randomchords(0);                                              // a button release does nothing
     console.log("random ok   e.g.", c.readoutText(c.state, null));
 }
 
