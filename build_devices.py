@@ -82,6 +82,15 @@ RANDOM_LENGTHS = ["1/8 bar", "1/4 bar", "1/2 bar", "3/4 bar", "1 bar", "1.5 bars
                   "3 bars", "4 bars"]                  # SLOT_LENGTHS without "Len="
 RANDOM_BARS = ["1 bar", "2 bars", "4 bars", "8 bars", "16 bars"]  # src/chords.js RANDOM_BARS
 VARIATIONS = ["Conservative", "Varied", "Chaotic"]                 # src/chords.js VARIATIONS
+
+
+def octave_dials(ui, x, y, low, high, what):
+    """Lowest / Highest octave dials: the notes of `what` stay between C<low> and B<high>."""
+    ui.dial("Lowest Octave", "Lowest", 0, 7, low, [x, y, 40, 40], "lowoct",
+            f"The lowest octave {what} may use (Live naming: C3 = middle C). Notes move by whole octaves "
+            "to stay between Lowest and Highest.", "C%d")
+    ui.dial("Highest Octave", "Highest", 0, 7, high, [x + 44, y, 40, 40], "highoct",
+            f"The highest octave {what} may use: up to B of this octave.", "B%d")
 CHORD_FILLS = ["No Fill", "Turnaround", "Dominant", "Sus", "Walk-up", "Push", "Break"]  # src/chords.js FILLS
 PRESETS = ["Presets…", "I V vi IV", "I vi IV V", "vi IV I V", "ii V I", "vi ii V I",
            "I IV V IV", "i VI III VII", "i iv v", "i VII VI V", "Canon (8)",
@@ -170,6 +179,8 @@ def build_chords():
              "A fill for the last bar of each phrase, leading into the next chord. Turnaround: ii then V7. "
              "Dominant: V7. Sus: Vsus4 then V. Walk-up: two chords stepping up. Push: the next chord an 8th early. "
              "Break: two stabs, then silence.")
+
+    octave_dials(ui, 0, 74, 2, 5, "chords (and their + Bass note)")
 
     # Rand tab: random progressions, written into the chord slots so they can be edited.
     ui.page("Rand")
@@ -260,11 +271,10 @@ def build_lines(mode):
                 "Note values of the melody. Mixed varies them beat by beat.")
         ui.numbox("Density", "Dens", 0, 100, 60, [78, 0, 74, 16], "density",
                   "How busy the melody is, in %.", "Density %d")
-        ui.numbox("Octave", "Oct", 2, 6, 4, [0, 19, 48, 16], "octave",
-                  "Melody octave (Live naming: C3 = middle C).", "Oct %d")
-        ui.numbox("Variation", "Var", 1, 99, 1, [50, 19, 48, 16], "variation",
+        ui.numbox("Variation", "Var", 1, 99, 1, [0, 19, 74, 16], "variation",
                   "Change this for a different melody over the same chords.", "Var %d")
-        ui.numbox("Velocity", "Vel", 1, 127, 100, [100, 19, 52, 16], "velocity", "Note velocity.", "Vel %d")
+        ui.numbox("Velocity", "Vel", 1, 127, 100, [78, 19, 74, 16], "velocity", "Note velocity.", "Vel %d")
+        octave_dials(ui, 0, 100, 3, 5, "the melody")
         ui.toggle("Repeat", "Repeat Motif", 1, [0, 38, 100, 16], "repeat",
                   "On: every bar reuses the same rhythm, so the melody has a hook. Off: a new rhythm each bar.")
         source_row(ui, 57)
@@ -274,7 +284,9 @@ def build_lines(mode):
         top = 97
         description = "Writes a melody that follows the chords in any clip."
 
-    readout = ui.readout([0, top, TOOL_W, TOOL_H - top], linecount=(TOOL_H - top) // 12)
+    # Melody's octave dials sit beside the readout.
+    left = 88 if mode == "melody" else 0
+    readout = ui.readout([left, top, TOOL_W - left, TOOL_H - top], linecount=(TOOL_H - top) // 12)
     p.connect(feedback, readout, 0, 0)
     p.add("live.line", [0, 146, TOOL_W, 5.0], numinlets=1, numoutlets=0)
     return p.to_json("generator", TOOL_W, TOOL_H, description)

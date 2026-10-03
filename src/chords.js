@@ -75,6 +75,8 @@ var state = {
     randMaxCount: 16, // Random Lengths: most chords
     randVariation: 1, // index into VARIATIONS (1 = Varied)
     randSeed: 0,      // 0 = a new progression every press
+    lowOct: 2,        // Lowest octave chords may use (C2)
+    highOct: 5,       // Highest octave chords may use (up to B5)
     fillType: 0,      // index into FILLS
     fillEvery: 0,     // index into FILL_EVERY (theory.js)
     slots:    [1, 5, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -153,6 +155,43 @@ function voiceLead(chords) {
 }
 
 // The list of chords from the slots, skipping empty ones. Each chord gets
+// ─── REGISTER ────────────────────────────────────────────────────────────────
+// Keep every chord between the Lowest and Highest octave dials (e.g. C2 to B5).
+// A chord moves by whole octaves to fit, so its notes and inversion don't
+// change; a chord too big for the window gets as close as it can. The
+// + Bass note counts as part of the chord and always stays below it.
+
+function registerWindow(st) {
+    var lo = Math.min(st.lowOct, st.highOct), hi = Math.max(st.lowOct, st.highOct);
+    return { low: (lo + 2) * 12, high: (hi + 2) * 12 + 11 };   // C of the lowest, B of the highest
+}
+
+function keepInRange(st, chord) {
+    if (chord.bass !== null) {
+        var lowest = Math.min.apply(null, chord.upper);
+        while (chord.bass >= lowest) chord.bass -= 12;
+        while (chord.bass < lowest - 12) chord.bass += 12;
+    }
+    var all = chord.upper.concat(chord.bass !== null ? [chord.bass] : []);
+    var w = registerWindow(st), middle = (w.low + w.high) / 2;
+    var best = 0, bestOut = Infinity, bestDist = Infinity;
+    for (var k = -6; k <= 6; k++) {
+        var shift = k * 12, out = 0;
+        all.forEach(function (p) { if (p + shift < w.low || p + shift > w.high) out++; });
+        var dist = Math.abs(mean(all) + shift - middle);
+        // fewest notes outside the window first; then the smallest move
+        if (out < bestOut || (out === bestOut && Math.abs(shift) < Math.abs(best)) ||
+            (out === bestOut && Math.abs(shift) === Math.abs(best) && dist < bestDist)) {
+            best = shift; bestOut = out; bestDist = dist;
+        }
+    }
+    if (best) {
+        chord.upper = chord.upper.map(function (p) { return p + best; });
+        if (chord.bass !== null) chord.bass += best;
+    }
+    return chord;
+}
+
 // its own chord type, length in beats and inversion where the slot sets
 // them, otherwise the Chord Type, Length and Inversion controls'.
 function progression(st, ctx) {
@@ -168,6 +207,7 @@ function progression(st, ctx) {
         chords.push(c);
     }
     if (st.voiceLead) voiceLead(chords);
+    chords.forEach(function (c) { keepInRange(st, c); });
     return chords;
 }
 
@@ -299,6 +339,7 @@ function applyFills(st, ctx, line) {
             var c = buildChord(st, ctx, degreeFrom(st, ctx, target.degree, steps), 0, type);
             var prev = eventAt(events, t - 0.01);
             c.upper = smoothestVoicing(prev ? prev.chord.upper : current.upper, c.upper, mean(current.upper));
+            keepInRange(st, c);
             events.push({ chord: c, t: t, dur: dur, i: seed });
         };
 
@@ -378,6 +419,8 @@ function style(v)     { state.style = v | 0; changed(); }
 function rate(v)      { state.rate = v | 0; changed(); }
 function voicelead(v) { state.voiceLead = v ? 1 : 0; changed(); }
 function filltype(v)  { state.fillType = v | 0; changed(); }
+function lowoct(v)    { state.lowOct = v | 0; changed(); }
+function highoct(v)   { state.highOct = v | 0; changed(); }
 function fillevery(v) { state.fillEvery = v | 0; changed(); }
 
 function slot(i, v) {

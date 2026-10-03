@@ -184,6 +184,22 @@ class DeviceUI:
         self._wire(n, message, y)
         return n
 
+    def dial(self, name, short, lo, hi, initial, rect, message, annotation, units):
+        """A Live dial for whole numbers lo..hi; shows `short` above and the value below,
+        formatted with `units` (e.g. "C%d" -> "C2")."""
+        y = self._y()
+        attrs = param(name, short, 1, initial, mmin=lo, mmax=hi)
+        attrs["valueof"]["parameter_unitstyle"] = 9  # custom text
+        attrs["valueof"]["parameter_units"] = units
+        d = self.p.add("live.dial", [self.control_x, y, rect[2], rect[3]], rect,
+                       varname=self.var(name), parameter_enable=1, numinlets=1, numoutlets=2,
+                       outlettype=["", "float"], annotation=annotation, annotation_name=name,
+                       showname=1, shownumber=1, fontsize=8.0,
+                       saved_attribute_attributes=attrs)
+        self._on_page(self.var(name))
+        self._wire(d, message, y)
+        return d
+
     def toggle(self, name, text, initial, rect, message, annotation):
         y = self._y()
         t = self.p.add("live.text", [self.control_x, y, rect[2], 15.0], rect,

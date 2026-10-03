@@ -282,6 +282,48 @@ function FakeLiveAPI(callback, path) {
     console.log("random ok   e.g.", c.readoutText(c.state, null));
 }
 
+// ─── Register: chords and melodies stay between Lowest and Highest octave ─────
+{
+    const c = load("Generate", "keywise_chords.js");
+    const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+    let checked = 0, fitted = 0;
+    for (let seed = 1; seed <= 120; seed++) {
+        const rand = c.seededRandom(seed);
+        c.state.root = seed % 12; c.state.scale = seed % 9; c.state.octave = 1 + (seed % 5);
+        c.state.type = seed % 16; c.state.bass = seed % 2; c.state.voiceLead = seed % 3 === 0 ? 1 : 0;
+        c.state.fillType = seed % 7;
+        c.state.lowOct = 1 + (seed % 3); c.state.highOct = c.state.lowOct + (seed % 4);   // 1-4 octave windows
+        c.state.slots = Array.from(c.randomDegrees(c.state, null, 16, rand));
+        c.state.slotTypes = c.state.slots.map(() => Math.floor(rand() * 17));     // any type, incl. 13ths
+        c.state.slotInvs = c.state.slots.map(() => Math.floor(rand() * 5));      // any inversion
+        const ctx = { time_selection: { start_time: 0, end_time: 64 } };
+        const low = (c.state.lowOct + 2) * 12, high = (c.state.highOct + 2) * 12 + 11;
+        c.applyFills(c.state, ctx, c.timeline(c.state, ctx)).forEach((e) => {
+            const notes = e.chord.upper.concat(e.chord.bass !== null ? [e.chord.bass] : []);
+            const outside = (shift) => notes.filter((p) => p + shift < low || p + shift > high).length;
+            // no other octave placement would leave fewer notes outside the window
+            const best = Math.min(...[-48, -36, -24, -12, 0, 12, 24, 36, 48].map(outside));
+            assert.strictEqual(outside(0), best, `${e.chord.name} ${notes} could fit ${low}-${high} better`);
+            if (best === 0) fitted++;
+            if (e.chord.bass !== null) assert(e.chord.bass < Math.min(...e.chord.upper), "bass above chord");
+            checked++;
+        });
+    }
+    c.state.root = 0; c.state.scale = 0; c.state.octave = 3; c.state.type = 0; c.state.bass = 0;
+    c.state.voiceLead = 0; c.state.fillType = 0; c.state.lowOct = 2; c.state.highOct = 5;
+
+    const m = load("Generate", "keywise_lines.js", ["melody"]);
+    m.state.source = 1;
+    for (let v = 1; v <= 30; v++) {
+        m.state.variation = v; m.state.rhythm = v % 4; m.state.fillType = v % 6;
+        m.state.lowOct = 2 + (v % 3); m.state.highOct = m.state.lowOct + (v % 3);
+        const low = (m.state.lowOct + 2) * 12, high = (m.state.highOct + 2) * 12 + 11;
+        m.transform(m.state, chordClip, { time_selection: { start_time: 0, end_time: 16 } })
+            .forEach((n) => assert(n.pitch >= low && n.pitch <= high, `melody note ${n.pitch} outside ${low}-${high}`));
+    }
+    console.log("register ok", checked, "chords checked,", fitted, "fully inside their window");
+}
+
 // ─── Fills ───────────────────────────────────────────────────────────────────
 {
     const c = load("Generate", "keywise_chords.js");

@@ -121,7 +121,7 @@ The device has seven tabs: **Key · 1-4 · 5-8 · 9-12 · 13-16 · Feel · Rand*
 | **Scale / Mode** | Major, Natural Minor, Harmonic Minor, Melodic Minor, Dorian, Phrygian, Lydian, Mixolydian, Locrian, Pentatonic Major, Pentatonic Minor, Blues, Whole Tone, Diminished (W-H) | The scale the chords are built from. |
 | **Chord type** | Triad (3), 7th (4), 9th (5), 11th (6), 13th (7), 5th, add9, sus2, sus4, maj9, min9, 9 (dom), add11, m/maj7, dim7, aug | The chord type for every chord set to *Type=*. See [chord types](#chord-types). |
 | **Length** | 1/2 beat, 1 beat, 2 beats, 3 beats, 1 bar, 6 beats, 2 bars, 4 bars | How long each chord lasts, for chords set to *Len=*. Default: 1 bar. |
-| **Oct** | 0 – 6 | Octave of the chords. Live's naming: C3 = middle C. Default: 3. |
+| **Oct** | 0 – 6 | Octave the chords are built in. Live's naming: C3 = middle C. Default: 3. The **Lowest** and **Highest** dials (Feel tab) then keep them in a window: see [Register](#register). |
 | **Inv** | 0 – 3 | Inversion for chords set to *Inv=*. 0 = root position; 1 = the lowest note moves up an octave; 2 = the two lowest; 3 = the three lowest. |
 | **+ Bass** | on / off | Adds each chord's root an octave below. |
 | **Clip Key** | on / off | Ignore Key and Scale and use the clip's own **Scale** setting (Live's Scale Mode) instead. |
@@ -202,6 +202,7 @@ If all 16 slots are used, or no chords are filled in, it does nothing and says w
 | **Vel** | 1 – 127 | Note velocity. Default: 100. |
 | **Fill** | No Fill, Turnaround, Dominant, Sus, Walk-up, Push, Break | A chord fill in the last bar of each phrase. See [Fills](#fills). |
 | **Every** | Each Pass, End of Clip, Every 4 Bars, Every 8 Bars | Where the fills go. |
+| **Lowest**, **Highest** (dials) | C0 – B7 | The octave window chords must stay in. Default C2 – B5. See [Register](#register). |
 
 ### Random progressions
 
@@ -245,6 +246,23 @@ songs follow, in any key or mode:
 - It **ends on a chord that leads home**: V or IV, or ♭VII in keys that have it (like G in A minor),
   so the progression wants to loop back round to I.
 - **Random Lengths** changes chords only on **beats 1 and 3**, the strong beats.
+- Every chord stays in a sensible octave range (see [Register](#register)).
+
+### Register
+
+Big chords (11ths, 13ths), inversions, Chaotic randomness and chords high up the scale could
+otherwise wander up or down the keyboard. Two dials on the Feel tab set the window chords must stay
+in: **Lowest** (shown as the C at the bottom, e.g. `C2`) and **Highest** (the B at the top, e.g.
+`B5`). The default window is C2 – B5; turn them closer together for a tighter, more even sound,
+e.g. C3 – B3 for chords that sit in one octave like a pad.
+
+Each chord, including fill chords and the **+ Bass** note, moves by whole octaves to fit in the
+window, so its notes and inversion don't change, only its register. A chord too big for the window
+(a 13th chord in a one-octave window, say) is placed where the fewest notes fall outside. The
++ Bass note always stays below the chord.
+
+Keywise Melody has the same two dials and keeps every note, fills included, inside its window,
+wandering around the middle of it. Keywise Bass stays in its own octave (**Oct**).
 
 ### Fills
 
@@ -401,7 +419,7 @@ melody always fits. Treat it as a sketch: keep what you like and edit the rest.
 |---|---|---|
 | **Rhythm** | Quarters, 8ths, 16ths, Mixed | Note values. Mixed varies them beat by beat. Default: 8ths. |
 | **Density** | 0 – 100 | How busy the melody is: the % chance of a note on each step (a little higher on the beat). Default: 60. |
-| **Oct** | 2 – 6 | Melody octave. Default: 4. |
+| **Lowest**, **Highest** (dials) | C0 – B7 | The octave window the melody stays in; it wanders around the middle. Default C3 – B5. |
 | **Var** | 1 – 99 | Variation. Every number is a different melody over the same chords, and the same number always gives the same melody. Flip through them to audition ideas. |
 | **Vel** | 1 – 127 | Velocity of notes on the beat (notes between beats are a little softer). Default: 100. |
 | **Repeat Motif** | on / off | On (default): every bar reuses the same rhythm, so the melody has a hook. Off: a new rhythm each bar. |

@@ -44,7 +44,7 @@ Everything to check in Ableton Live before releasing Keywise. Riskiest first. Re
   Held, Pulse, Root-Fifth, Octaves, Walking, Syncopated, Push.
 - [ ] **Bass Rate, Oct and Gate do what they say**
 - [ ] **Melody: changing Var gives a different melody; the same Var gives the same one**
-- [ ] **Melody Rhythm, Density, Oct and Repeat Motif do what they say**
+- [ ] **Melody Rhythm, Density and Repeat Motif do what they say**
 
 ## Keywise Chords
 
@@ -76,6 +76,9 @@ Everything to check in Ableton Live before releasing Keywise. Riskiest first. Re
 - [ ] **Seed brings a progression back**  
   Note the seed in the readout, try a few others, type the seed in: the same progression returns.
 - [ ] **You can edit the chords afterwards on the 1-4 … 13-16 tabs**
+- [ ] **The Lowest and Highest dials keep chords in that octave window**  
+  Feel tab. Try C3 – B3 with triads (everything in one octave), then 13th chords, Chaotic and + Bass. The bass stays below the chord.
+- [ ] **Keywise Melody's Lowest and Highest dials keep the melody (and its fills) in the window**
 
 ## Keywise Keys
 

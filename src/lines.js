@@ -38,7 +38,8 @@ var state = {
     // melody
     rhythm: 1,
     density: 60,       // % chance of a note on each weak step
-    melodyOctave: 4,   // C4 = MIDI 72
+    lowOct: 3,         // melody: lowest octave (C3)
+    highOct: 5,        // melody: highest octave (up to B5)
     variation: 1,      // seed: change it for a different melody
     repeat: 1,         // reuse one bar of rhythm so the melody has a motif
     // both
@@ -238,7 +239,7 @@ function melodyLine(st, chords, scalePcs) {
     var notes = [];
     if (!chords.length) return notes;
     var start = chords[0].start, end = chords[chords.length - 1].end;
-    var centre = (st.melodyOctave + 2) * 12 + 4;
+    var centre = melodyWindow(st).centre;
     var dirRand = seededRandom(st.variation * 7 + 3);
     var pitch = centre;
     var dir = 1;
@@ -297,6 +298,22 @@ function chordAt(chords, t) {
 //           Rest                silence
 
 var FILL_BEATS = 2;
+
+// The melody stays between the Lowest and Highest octave dials, and wanders
+// around the middle of that window.
+function melodyWindow(st) {
+    var lo = Math.min(st.lowOct, st.highOct), hi = Math.max(st.lowOct, st.highOct);
+    var w = { low: (lo + 2) * 12, high: (hi + 2) * 12 + 11 };
+    w.centre = Math.round((w.low + w.high) / 2);
+    return w;
+}
+
+// Move a pitch by octaves into the window.
+function intoWindow(w, p) {
+    while (p > w.high) p -= 12;
+    while (p < w.low) p += 12;
+    return p;
+}
 
 // Remove notes starting in [a, b); shorten notes that ring on into it.
 function cutNotes(notes, a, b) {
@@ -357,12 +374,18 @@ function lineFills(st, notes, chords, scalePcs, info) {
         // Melody: aim for the chord tone of the next chord nearest the last note played.
         var last = null;
         notes.forEach(function (n) { if (n.start_time < a - 1e-6) last = n; });
-        var from = last ? last.pitch : (st.melodyOctave + 2) * 12 + 4;
+        var from = last ? last.pitch : melodyWindow(st).centre;
         var target = nearestIn(next.pcs, from);
         notes = cutNotes(notes, a, p);
         if (fill === "Run Up" || fill === "Run Down") {
-            scaleSteps(scalePcs, target, fill === "Run Up" ? -1 : 1, 8).reverse()
-                .forEach(function (pitch, k) { add(pitch, a + k * 0.25, 0.24); });
+            var run = scaleSteps(scalePcs, target, fill === "Run Up" ? -1 : 1, 8).reverse();
+            // keep the whole run within the melody's range, moving it by octaves
+            // keep the whole run in the window, moving it by octaves (or note by note if it can't fit)
+            var w = melodyWindow(st);
+            while (Math.max.apply(null, run) > w.high && Math.min.apply(null, run) - 12 >= w.low) run = run.map(function (q) { return q - 12; });
+            while (Math.min.apply(null, run) < w.low && Math.max.apply(null, run) + 12 <= w.high) run = run.map(function (q) { return q + 12; });
+            run = run.map(function (q) { return intoWindow(w, q); });
+            run.forEach(function (pitch, k) { add(pitch, a + k * 0.25, 0.24); });
         } else if (fill === "Pickup") {
             scaleSteps(scalePcs, target, -1, 2).reverse()
                 .forEach(function (pitch, k) { add(pitch, a + 1 + k * 0.5, 0.45); });
@@ -445,7 +468,14 @@ function transform(st, notes, ctx) {
         n.duration = Math.min(n.duration, range.end - n.start_time);
         return n;
     });
-    return lineFills(st, line, chords, scalePcs, info);
+    line = lineFills(st, line, chords, scalePcs, info);
+    if (MODE === "melody") {
+        // Last of all, keep every melody note (fills included) between its
+        // Lowest and Highest octaves.
+        var w = melodyWindow(st);
+        line.forEach(function (n) { n.pitch = intoWindow(w, n.pitch); });
+    }
+    return line;
 }
 
 function readoutText() {
@@ -476,12 +506,14 @@ function changed() {
 
 function pattern(v)   { state.pattern = v | 0; changed(); }
 function rate(v)      { state.rate = v | 0; changed(); }
-function octave(v)    { if (MODE === "melody") state.melodyOctave = v | 0; else state.bassOctave = v | 0; changed(); }
+function octave(v)    { state.bassOctave = v | 0; changed(); }
 function gate(v)      { state.gate = Math.max(10, Math.min(100, v | 0)); changed(); }
 function rhythm(v)    { state.rhythm = v | 0; changed(); }
 function density(v)   { state.density = Math.max(0, Math.min(100, v | 0)); changed(); }
 function variation(v) { state.variation = v | 0; changed(); }
 function repeat(v)    { state.repeat = v ? 1 : 0; changed(); }
+function lowoct(v)    { state.lowOct = v | 0; changed(); }
+function highoct(v)   { state.highOct = v | 0; changed(); }
 function velocity(v)  { state.velocity = Math.max(1, Math.min(127, v | 0)); changed(); }
 function source(v)    { state.source = v | 0; lastError = ""; outlet(2, "readout", "set", readoutText()); changed(); }
 function track(v)     { state.track = Math.max(1, v | 0); changed(); }
